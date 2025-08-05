@@ -440,16 +440,18 @@ class simt_stack {
   void launch(address_type start_pc, const simt_mask_t &active_mask);
   void update(simt_mask_t &thread_done, addr_vector_t &next_pc,
               address_type recvg_pc, op_type next_inst_op,
-              unsigned next_inst_size, address_type next_inst_pc);
+              unsigned next_inst_size, address_type next_inst_pc, bool dynamic);
 
   const simt_mask_t &get_active_mask() const;
+  void set_active_mask(simt_mask_t active_mask);
   void get_pdom_stack_top_info(unsigned *pc, unsigned *rpc) const;
+  void get_pdom_dynamic_stack_top_info(unsigned *pc, unsigned *rpc) const;
   unsigned get_rp() const;
   void print(FILE *fp) const;
   void resume(char *fname);
   void print_checkpoint(FILE *fout) const;
 
- protected:
+ public:
   unsigned m_warp_id;
   unsigned m_warp_size;
 
@@ -799,6 +801,7 @@ enum cache_operator_type {
 
 class mem_access_t {
  public:
+  mem_access_t(){}
   mem_access_t(gpgpu_context *ctx) { init(ctx); }
   mem_access_t(mem_access_type type, new_addr_type address, unsigned size,
                bool wr, gpgpu_context *ctx) {
@@ -1329,8 +1332,10 @@ class core_t {
                                              unsigned tid) = 0;
   class gpgpu_sim *get_gpu() { return m_gpu; }
   void execute_warp_inst_t(warp_inst_t &inst, unsigned warpId = (unsigned)-1);
+  void execute_dynamic_warp_inst_t(warp_inst_t &inst, unsigned warpId = (unsigned)-1);
   bool ptx_thread_done(unsigned hw_thread_id) const;
-  virtual void updateSIMTStack(unsigned warpId, warp_inst_t *inst);
+  bool ptx_thread_done_dynamic(unsigned hw_thread_id) const;
+  virtual void updateSIMTStack(unsigned warpId, warp_inst_t *inst,bool dynamic);
   void initilizeSIMTStack(unsigned warp_count, unsigned warps_size);
   void deleteSIMTStack();
   warp_inst_t getExecuteWarp(unsigned warpId);
@@ -1351,12 +1356,24 @@ class core_t {
   unsigned get_reduction_value(unsigned ctaid, unsigned barid) {
     return reduction_storage[ctaid][barid];
   }
+  void set_active_mask_stack(unsigned warp_id, simt_mask_t mask){
+    m_simt_stack[warp_id]->set_active_mask(mask);
+  }
+
+  simt_mask_t get_active_mask_stack(unsigned warp_id){
+    return m_simt_stack[warp_id]->get_active_mask();
+  }
 
  protected:
   class gpgpu_sim *m_gpu;
   kernel_info_t *m_kernel;
+ public:
   simt_stack **m_simt_stack;  // pdom based reconvergence context for each warp
+ protected:
+  std::vector<simt_stack*> m_dynamic_simt_stack;  // pdom based reconvergence context for each warp
   class ptx_thread_info **m_thread;
+  std::vector<ptx_thread_info *>m_thread_dynamic;
+  std::map<unsigned, unsigned>map_warps_id_position; //map_warps to know their origin
   unsigned m_warp_size;
   unsigned m_warp_count;
   unsigned reduction_storage[MAX_CTA_PER_SHADER][MAX_BARRIERS_PER_CTA];

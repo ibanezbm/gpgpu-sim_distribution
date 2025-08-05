@@ -989,7 +989,18 @@ const simt_mask_t &simt_stack::get_active_mask() const {
   return m_stack.back().m_active_mask;
 }
 
+void simt_stack::set_active_mask(simt_mask_t active_mask){
+  assert(m_stack.size() > 0);
+  m_stack.back().m_active_mask = active_mask;
+}
+
 void simt_stack::get_pdom_stack_top_info(unsigned *pc, unsigned *rpc) const {
+  assert(m_stack.size() > 0);
+  *pc = m_stack.back().m_pc;
+  *rpc = m_stack.back().m_recvg_pc;
+}
+
+void simt_stack::get_pdom_dynamic_stack_top_info(unsigned *pc, unsigned *rpc) const {
   assert(m_stack.size() > 0);
   *pc = m_stack.back().m_pc;
   *rpc = m_stack.back().m_recvg_pc;
@@ -1045,7 +1056,7 @@ void simt_stack::print_checkpoint(FILE *fout) const {
 
 void simt_stack::update(simt_mask_t &thread_done, addr_vector_t &next_pc,
                         address_type recvg_pc, op_type next_inst_op,
-                        unsigned next_inst_size, address_type next_inst_pc) {
+                        unsigned next_inst_size, address_type next_inst_pc, bool dynamic) {
   assert(m_stack.size() > 0);
 
   assert(next_pc.size() == m_warp_size);
@@ -1124,7 +1135,8 @@ void simt_stack::update(simt_mask_t &thread_done, addr_vector_t &next_pc,
       new_stack_entry.m_branch_div_cycle =
           m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
       new_stack_entry.m_type = STACK_ENTRY_TYPE_CALL;
-      m_stack.push_back(new_stack_entry);
+      m_stack.pus  m_mem_accesses_count += info.active.count();
+h_back(new_stack_entry);
       return;
     } else if (next_inst_op == RET_OPS && top_type == STACK_ENTRY_TYPE_CALL) {
       // pop the CALL Entry
@@ -1201,27 +1213,65 @@ void core_t::execute_warp_inst_t(warp_inst_t &inst, unsigned warpId) {
   }
 }
 
+void core_t::execute_dynamic_warp_inst_t(warp_inst_t &inst, unsigned warpId) {
+  for (unsigned t = 0; t < m_warp_size; t++) {
+    if (inst.active(t)) {
+      if (warpId == (unsigned(-1))) warpId = inst.warp_id();
+      unsigned tid = m_warp_size * map_warps_id_position[warpId] + t;
+      if(m_thread_dynamic[tid]->next_instr() == inst.pc)
+        m_thread_dynamic[tid]->ptx_exec_inst(inst, t);
+      if(m_gpu->get_config().get_end_remote()==m_thread_dynamic[tid]->get_pc()){
+        m_thread_dynamic[tid]->set_done();
+      }
+      checkExecutionDynamicStatusAndUpdate(inst, t, tid);
+    }
+  }
+}
+
 bool core_t::ptx_thread_done(unsigned hw_thread_id) const {
   return ((m_thread[hw_thread_id] == NULL) ||
           m_thread[hw_thread_id]->is_done());
 }
 
-void core_t::updateSIMTStack(unsigned warpId, warp_inst_t *inst) {
+bool core_t::ptx_thread_done_dynamic(unsigned hw_thread_id) const {
+  return ((m_thread_dynamic[hw_thread_id] == NULL) ||
+          m_thread_dynamic[hw_thread_id]->is_done());
+}
+
+void core_t::updateSIMTStack(unsigned warpId, warp_inst_t *inst, bool dynamic) {
   simt_mask_t thread_done;
   addr_vector_t next_pc;
   unsigned wtid = warpId * m_warp_size;
   for (unsigned i = 0; i < m_warp_size; i++) {
-    if (ptx_thread_done(wtid + i)) {
-      thread_done.set(i);
-      next_pc.push_back((address_type)-1);
-    } else {
-      if (inst->reconvergence_pc == RECONVERGE_RETURN_PC)
-        inst->reconvergence_pc = get_return_pc(m_thread[wtid + i]);
-      next_pc.push_back(m_thread[wtid + i]->get_pc());
+    if (dynamic){
+      if (ptx_thread_done_dynamic(wtid + i)) {
+        thread_done.set(i);
+        next_pc.push_back((address_type)-1);
+      } else {
+        if (inst->reconvergence_pc == RECONVERGE_RETURN_PC)
+          inst->reconvergence_pc = get_return_pc(m_thread_dynamic[wtid + i]);
+        next_pc.push_back(m_thread_dynamic[wtid + i]->get_pc());
+      }
+    }else{
+      if (ptx_thread_done(wtid + i)) {
+        thread_done.set(i);
+        next_pc.push_back((address_type)-1);
+      } else {
+        if (inst->reconvergence_pc == RECONVERGE_RETURN_PC)
+          inst->reconvergence_pc = get_return_pc(m_thread[wtid + i]);
+
+        next_pc.push_back(m_thread[wtid + i]->get_pc());
+      }
     }
+    
   }
-  m_simt_stack[warpId]->update(thread_done, next_pc, inst->reconvergence_pc,
-                               inst->op, inst->isize, inst->pc);
+  if (dynamic){
+    m_dynamic_simt_stack[warpId]->update(thread_done, next_pc, inst->reconvergence_pc,
+                               inst->op, inst->isize, inst->pc, true);
+  }else{
+    m_simt_stack[warpId]->update(thread_done, next_pc, inst->reconvergence_pc,
+                               inst->op, inst->isize, inst->pc, false);
+  }
 }
 
 //! Get the warp to be executed using the data taken form the SIMT stack
