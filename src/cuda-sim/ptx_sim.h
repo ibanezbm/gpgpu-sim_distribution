@@ -379,6 +379,7 @@ class ptx_thread_info {
   unsigned get_builtin(int builtin_id, unsigned dim_mod);
 
   void set_done();
+  void unset_done();
   bool is_done() { return m_thread_done; }
   unsigned donecycle() const { return m_cycle_done; }
 

@@ -455,9 +455,92 @@ void *gpgpu_t::gpu_malloc(size_t size) {
     fflush(stdout);
   }
   m_dev_malloc += size;
-  if (size % 256)
-    m_dev_malloc += (256 - size % 256);  // align to 256 byte boundaries
-  return (void *)result;
+  linear_to_raw_address_translation mem_conf = this->gpgpu_ctx->the_gpgpusim->g_the_gpu_config->get_mem_config()->m_address_mapping;
+  if(strcmp(mem_conf.page_type, "default") == 0){
+    unsigned page_size = mem_conf.page_size;
+    if (size % page_size)
+      m_dev_malloc += (page_size - (size % page_size));  // align to 256 byte boundaries
+    if(mem_conf.virtual_memory){
+      memory_config* mem_conf = this->gpgpu_ctx->the_gpgpusim->g_the_gpu_config->get_mem_config();
+      mem_conf->m_address_mapping.malloc_times++;
+      if (mem_conf->m_address_mapping.repet == mem_conf->m_address_mapping.malloc_times){
+        mem_conf->m_address_mapping.repet_min = result;
+        mem_conf->m_address_mapping.repet_max = m_dev_malloc;
+      }
+      unsigned long long i;
+      unsigned chip = 0;
+      for(i=0; i<(m_dev_malloc-result)/(page_size); i++){
+        unsigned long long addr = result + i*page_size;
+        addr = addr & ~(page_size-1);
+        new_addr_type physical_address = mem_conf->m_address_mapping.chip_to_last_physical[chip];
+        mem_conf->m_address_mapping.virtual_table[addr] = physical_address;
+        mem_conf->m_address_mapping.physical_chip[physical_address] = chip;
+        mem_conf->m_address_mapping.chip_to_last_physical[chip] += page_size;
+        chip = (chip+1) %  mem_conf->m_n_mem;
+      }
+    }
+    return (void *)result;
+  
+  }else if(strcmp(mem_conf.page_type, "mult") == 0){
+    unsigned page_size = mem_conf.page_size;
+    if (size % page_size)
+      m_dev_malloc += (page_size - (size % page_size));  // align to 256 byte boundaries
+    if(mem_conf.virtual_memory){
+      memory_config* mem_conf = this->gpgpu_ctx->the_gpgpusim->g_the_gpu_config->get_mem_config();
+      mem_conf->m_address_mapping.malloc_times++;
+      unsigned long long i;
+      unsigned chip = 0;
+      unsigned j = 0;
+      unsigned total = 0;
+      for(i=0; i<(m_dev_malloc-result)/(page_size); i++){
+        unsigned long long addr = result + i*page_size;
+        addr = addr & ~(page_size-1);
+        j++;
+        new_addr_type physical_address = mem_conf->m_address_mapping.chip_to_last_physical[chip];
+        mem_conf->m_address_mapping.virtual_table[addr] = physical_address;
+        mem_conf->m_address_mapping.physical_chip[physical_address] = chip;
+        mem_conf->m_address_mapping.chip_to_last_physical[chip] += page_size;
+        if(j == mem_conf->m_address_mapping.string_page[mem_conf->m_address_mapping.malloc_times-1][0]){
+          chip = (chip+1) %  mem_conf->m_n_mem;
+        total++;
+          j = 0;
+        }
+      }
+    }
+    return (void *)result;
+  }else{
+    if(mem_conf.virtual_memory){
+      memory_config* mem_conf = this->gpgpu_ctx->the_gpgpusim->g_the_gpu_config->get_mem_config();
+      unsigned change_chip = 0;
+      unsigned long long i;
+      unsigned long long h;
+      unsigned long long size_aux = 0;
+      unsigned chip = 0;
+      unsigned init_chip = chip;
+      unsigned j=0;
+      for(i=0; i<mem_conf->m_address_mapping.string_page[mem_conf->m_address_mapping.malloc_times].size(); i++){
+        for(h=0;h<mem_conf->m_address_mapping.string_page[mem_conf->m_address_mapping.malloc_times][i];h++){
+          new_addr_type physical_address = mem_conf->m_address_mapping.chip_to_last_physical[chip];
+          mem_conf->m_address_mapping.virtual_table[(result +size_aux)] = physical_address;
+          mem_conf->m_address_mapping.physical_chip[physical_address] = chip;
+          mem_conf->m_address_mapping.chip_to_last_physical[chip] = mem_conf->m_address_mapping.chip_to_last_physical[chip] + 1;
+          //printf("TAB r:%llu p:%llu c:%d\n", (result +size_aux), physical_address, chip);
+          size_aux++;
+          if(size_aux % mem_conf->m_address_mapping.page_size == 0){
+            chip = (chip + mem_conf->m_address_mapping.n_chiplets) %  mem_conf->m_n_mem;
+          }
+        }
+        if(change_chip == j){
+          j= -1;
+          chip = (init_chip+1) %  this->gpgpu_ctx->the_gpgpusim->g_the_gpu_config->get_mem_config()->m_n_mem;
+          init_chip = chip;
+        }
+        j++;
+      }
+      mem_conf->m_address_mapping.malloc_times++;
+    }
+    return (void *)result;
+  }
 }
 
 void *gpgpu_t::gpu_mallocarray(size_t size) {
@@ -706,7 +789,7 @@ void ptx_instruction::set_mul_div_or_other_archop() {
           sp_op = TEX__OP;
           break;
         default:
-          if ((op == INTP_OP) || (op == ALU_OP)) sp_op = INT__OP;
+          if ((op == ALU_OP)) sp_op = INT__OP;
           break;
       }
     }
@@ -2315,15 +2398,15 @@ void cuda_sim::gpgpu_ptx_sim_memcpy_symbol(const char *hostVar, const void *src,
   // Use of a string naming a variable as the symbol parameter was deprecated in
   // CUDA 4.1 and removed in CUDA 5.0.
   if (!found_sym) {
-    if (g_globals.find(hostVar) != g_globals.end()) {
-      found_sym = true;
-      sym_name = hostVar;
-      mem_region = global_space;
-    }
-    if (g_constants.find(hostVar) != g_constants.end()) {
-      found_sym = true;
-      sym_name = hostVar;
-      mem_region = const_space;
+  if (g_globals.find(hostVar) != g_globals.end()) {
+    found_sym = true;
+    sym_name = hostVar;
+    mem_region = global_space;
+  }
+  if (g_constants.find(hostVar) != g_constants.end()) {
+    found_sym = true;
+    sym_name = hostVar;
+    mem_region = const_space;
     }
   }
 
@@ -2742,7 +2825,7 @@ void functionalCoreSim::executeWarp(unsigned i, bool &allAtBarrier,
     if (inst.isatomic()) inst.do_atomic(true);
     if (inst.op == BARRIER_OP || inst.op == MEMORY_BARRIER_OP)
       m_warpAtBarrier[i] = true;
-    updateSIMTStack(i, &inst);
+    updateSIMTStack(i, &inst, false);
   }
   if (m_liveThreadCount[i] > 0) someOneLive = true;
   if (!m_warpAtBarrier[i] && m_liveThreadCount[i] > 0) allAtBarrier = false;

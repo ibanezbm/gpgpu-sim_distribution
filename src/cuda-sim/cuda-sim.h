@@ -93,6 +93,13 @@ class functionalCoreSim : public core_t {
     }
   }
 
+  virtual void checkExecutionDynamicStatusAndUpdate(warp_inst_t &inst, unsigned t,
+                                             unsigned tid) {
+    if (m_thread_dynamic[tid] == NULL || m_thread_dynamic[tid]->is_done()) {
+      m_liveThreadCount[tid / m_warp_size]--;
+    }
+  }
+
   // lunches the stack and set the threads count
   void createWarp(unsigned warpId);
 

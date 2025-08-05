@@ -196,6 +196,12 @@ void ptx_thread_info::set_done() {
   m_cycle_done = m_gpu->gpu_sim_cycle;
 }
 
+void ptx_thread_info::unset_done() {
+  assert(!m_at_barrier);
+  m_thread_done = false;
+  m_cycle_done = 0;
+}
+
 unsigned ptx_thread_info::get_builtin(int builtin_id, unsigned dim_mod) {
   assert(m_valid);
   switch ((builtin_id & 0xFFFF)) {
@@ -204,7 +210,7 @@ unsigned ptx_thread_info::get_builtin(int builtin_id, unsigned dim_mod) {
     case CLOCK64_REG:
       // Change return value to unsigned long long?
       // Currently returns 32-bit unsigned, which may cause truncation for large values.
-      // GPGPUSim clock is 4 times slower - multiply by 4
+                // GPGPUSim clock is 4 times slower - multiply by 4
       return (m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) * 4;
     case HALFCLOCK_ID:
       // GPGPUSim clock is 4 times slower - multiply by 4
@@ -463,6 +469,7 @@ bool ptx_thread_info::callstack_pop() {
   }
   m_callstack.pop_back();
   m_regs.pop_back();
+  //TODO RESOLVER MAS ADELANTE
   m_debug_trace_regs_modified.pop_back();
   m_debug_trace_regs_read.pop_back();
 
