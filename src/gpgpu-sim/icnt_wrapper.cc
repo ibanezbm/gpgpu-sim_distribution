@@ -32,106 +32,106 @@
 #include "../intersim2/interconnect_interface.hpp"
 #include "local_interconnect.h"
 
-icnt_create_p icnt_create;
-icnt_init_p icnt_init;
-icnt_has_buffer_p icnt_has_buffer;
-icnt_push_p icnt_push;
-icnt_pop_p icnt_pop;
-icnt_transfer_p icnt_transfer;
-icnt_busy_p icnt_busy;
-icnt_display_stats_p icnt_display_stats;
-icnt_display_overall_stats_p icnt_display_overall_stats;
-icnt_display_state_p icnt_display_state;
-icnt_get_flit_size_p icnt_get_flit_size;
+icnt_create_p* icnt_create;
+icnt_init_p* icnt_init;
+icnt_has_buffer_p* icnt_has_buffer;
+icnt_push_p* icnt_push;
+icnt_pop_p* icnt_pop;
+icnt_transfer_p* icnt_transfer;
+icnt_busy_p* icnt_busy;
+icnt_display_stats_p* icnt_display_stats;
+icnt_display_overall_stats_p* icnt_display_overall_stats;
+icnt_display_state_p* icnt_display_state;
+icnt_get_flit_size_p* icnt_get_flit_size;
 
 unsigned g_network_mode;
 char* g_network_config_filename;
 
 struct inct_config g_inct_config;
-LocalInterconnect* g_localicnt_interface;
+LocalInterconnect** g_localicnt_interface;
 
 #include "../option_parser.h"
 
 // Wrapper to intersim2 to accompany old icnt_wrapper
 // TODO: use delegate/boost/c++11<funtion> instead
 
-static void intersim2_create(unsigned int n_shader, unsigned int n_mem) {
+static void intersim2_create(unsigned int n_shader, unsigned int n_mem, unsigned int network) {
   g_icnt_interface->CreateInterconnect(n_shader, n_mem);
 }
 
-static void intersim2_init() { g_icnt_interface->Init(); }
+static void intersim2_init(unsigned int network) { g_icnt_interface->Init(); }
 
-static bool intersim2_has_buffer(unsigned input, unsigned int size) {
+static bool intersim2_has_buffer(unsigned input, unsigned int size, unsigned int network) {
   return g_icnt_interface->HasBuffer(input, size);
 }
 
 static void intersim2_push(unsigned input, unsigned output, void* data,
-                           unsigned int size) {
+                           unsigned int size, unsigned int network) {
   g_icnt_interface->Push(input, output, data, size);
 }
 
-static void* intersim2_pop(unsigned output) {
+static void* intersim2_pop(unsigned output,unsigned int network) {
   return g_icnt_interface->Pop(output);
 }
 
-static void intersim2_transfer() { g_icnt_interface->Advance(); }
+static void intersim2_transfer(unsigned int network) { g_icnt_interface->Advance(); }
 
-static bool intersim2_busy() { return g_icnt_interface->Busy(); }
+static bool intersim2_busy(unsigned int network) { return g_icnt_interface->Busy(); }
 
-static void intersim2_display_stats() { g_icnt_interface->DisplayStats(); }
+static void intersim2_display_stats(unsigned int network) { g_icnt_interface->DisplayStats(); }
 
-static void intersim2_display_overall_stats() {
+static void intersim2_display_overall_stats(unsigned int network) {
   g_icnt_interface->DisplayOverallStats();
 }
 
-static void intersim2_display_state(FILE* fp) {
+static void intersim2_display_state(FILE* fp, unsigned int network) {
   g_icnt_interface->DisplayState(fp);
 }
 
-static unsigned intersim2_get_flit_size() {
+static unsigned intersim2_get_flit_size(unsigned int network) {
   return g_icnt_interface->GetFlitSize();
 }
 
 //////////////////////////////////////////////////////
 
 static void LocalInterconnect_create(unsigned int n_shader,
-                                     unsigned int n_mem) {
-  g_localicnt_interface->CreateInterconnect(n_shader, n_mem);
+                                     unsigned int n_mem, unsigned int network) {
+  g_localicnt_interface[network]->CreateInterconnect(n_shader, n_mem);
 }
 
-static void LocalInterconnect_init() { g_localicnt_interface->Init(); }
+static void LocalInterconnect_init(unsigned int network) { g_localicnt_interface[network]->Init(); }
 
-static bool LocalInterconnect_has_buffer(unsigned input, unsigned int size) {
-  return g_localicnt_interface->HasBuffer(input, size);
+static bool LocalInterconnect_has_buffer(unsigned input, unsigned int size, unsigned int network) {
+  return g_localicnt_interface[network]->HasBuffer(input, size);
 }
 
 static void LocalInterconnect_push(unsigned input, unsigned output, void* data,
-                                   unsigned int size) {
-  g_localicnt_interface->Push(input, output, data, size);
+                                   unsigned int size, unsigned int network) {
+  g_localicnt_interface[network]->Push(input, output, data, size);
 }
 
-static void* LocalInterconnect_pop(unsigned output) {
-  return g_localicnt_interface->Pop(output);
+static void* LocalInterconnect_pop(unsigned output, unsigned int network) {
+  return g_localicnt_interface[network]->Pop(output);
 }
 
-static void LocalInterconnect_transfer() { g_localicnt_interface->Advance(); }
+static void LocalInterconnect_transfer(unsigned int network) { g_localicnt_interface[network]->Advance(); }
 
-static bool LocalInterconnect_busy() { return g_localicnt_interface->Busy(); }
+static bool LocalInterconnect_busy(unsigned int network) { return g_localicnt_interface[network]->Busy(); }
 
-static void LocalInterconnect_display_stats() {
-  g_localicnt_interface->DisplayStats();
+static void LocalInterconnect_display_stats(unsigned int network) {
+  g_localicnt_interface[network]->DisplayStats();
 }
 
-static void LocalInterconnect_display_overall_stats() {
-  g_localicnt_interface->DisplayOverallStats();
+static void LocalInterconnect_display_overall_stats(unsigned int network) {
+  g_localicnt_interface[network]->DisplayOverallStats();
 }
 
-static void LocalInterconnect_display_state(FILE* fp) {
-  g_localicnt_interface->DisplayState(fp);
+static void LocalInterconnect_display_state(FILE* fp, unsigned int network) {
+  g_localicnt_interface[network]->DisplayState(fp);
 }
 
-static unsigned LocalInterconnect_get_flit_size() {
-  return g_localicnt_interface->GetFlitSize();
+static unsigned LocalInterconnect_get_flit_size(unsigned int network) {
+  return g_localicnt_interface[network]->GetFlitSize();
 }
 
 ///////////////////////////
@@ -160,36 +160,53 @@ void icnt_reg_options(class OptionParser* opp) {
                          &g_inct_config.grant_cycles, "grant_cycles", "1");
 }
 
-void icnt_wrapper_init() {
+void icnt_wrapper_init(int number_of_networks) {
   switch (g_network_mode) {
     case INTERSIM:
       // FIXME: delete the object: may add icnt_done wrapper
-      g_icnt_interface = InterconnectInterface::New(g_network_config_filename);
-      icnt_create = intersim2_create;
-      icnt_init = intersim2_init;
-      icnt_has_buffer = intersim2_has_buffer;
-      icnt_push = intersim2_push;
-      icnt_pop = intersim2_pop;
-      icnt_transfer = intersim2_transfer;
-      icnt_busy = intersim2_busy;
-      icnt_display_stats = intersim2_display_stats;
-      icnt_display_overall_stats = intersim2_display_overall_stats;
-      icnt_display_state = intersim2_display_state;
-      icnt_get_flit_size = intersim2_get_flit_size;
+      for (int i = 0; i < number_of_networks; i++){
+        g_icnt_interface = InterconnectInterface::New(g_network_config_filename);
+        icnt_create[i] = intersim2_create;
+        icnt_init[i] = intersim2_init;
+        icnt_has_buffer[i] = intersim2_has_buffer;
+        icnt_push[i] = intersim2_push;
+        icnt_pop[i] = intersim2_pop;
+        icnt_transfer[i] = intersim2_transfer;
+        icnt_busy[i] = intersim2_busy;
+        icnt_display_stats[i] = intersim2_display_stats;
+        icnt_display_overall_stats[i] = intersim2_display_overall_stats;
+        icnt_display_state[i] = intersim2_display_state;
+        icnt_get_flit_size[i] = intersim2_get_flit_size;
+      }
       break;
     case LOCAL_XBAR:
-      g_localicnt_interface = LocalInterconnect::New(g_inct_config);
-      icnt_create = LocalInterconnect_create;
-      icnt_init = LocalInterconnect_init;
-      icnt_has_buffer = LocalInterconnect_has_buffer;
-      icnt_push = LocalInterconnect_push;
-      icnt_pop = LocalInterconnect_pop;
-      icnt_transfer = LocalInterconnect_transfer;
-      icnt_busy = LocalInterconnect_busy;
-      icnt_display_stats = LocalInterconnect_display_stats;
-      icnt_display_overall_stats = LocalInterconnect_display_overall_stats;
-      icnt_display_state = LocalInterconnect_display_state;
-      icnt_get_flit_size = LocalInterconnect_get_flit_size;
+      g_localicnt_interface = static_cast<LocalInterconnect**>(std::malloc(number_of_networks * sizeof(LocalInterconnect*)));
+      icnt_create = static_cast<icnt_create_p*>(std::malloc(number_of_networks * sizeof(icnt_create_p)));
+      icnt_init = static_cast<icnt_init_p*>(std::malloc(number_of_networks * sizeof(icnt_init_p)));
+      icnt_has_buffer = static_cast<icnt_has_buffer_p*>(std::malloc(number_of_networks * sizeof(icnt_has_buffer_p)));
+      icnt_push = static_cast<icnt_push_p*>(std::malloc(number_of_networks * sizeof(icnt_push_p)));
+      icnt_pop = static_cast<icnt_pop_p*>(std::malloc(number_of_networks * sizeof(icnt_pop_p)));
+      icnt_transfer = static_cast<icnt_transfer_p*>(std::malloc(number_of_networks * sizeof(icnt_transfer_p)));
+      icnt_busy = static_cast<icnt_busy_p*>(std::malloc(number_of_networks * sizeof(icnt_busy_p)));
+      icnt_display_stats = static_cast<icnt_display_stats_p*>(std::malloc(number_of_networks * sizeof(icnt_display_stats_p)));
+      icnt_display_overall_stats = static_cast<icnt_display_overall_stats_p*>(std::malloc(number_of_networks * sizeof(icnt_display_overall_stats_p)));
+      icnt_display_state = static_cast<icnt_display_state_p*>(std::malloc(number_of_networks * sizeof(icnt_display_state_p)));
+      icnt_get_flit_size = static_cast<icnt_get_flit_size_p*>(std::malloc(number_of_networks * sizeof(icnt_get_flit_size_p)));
+      
+      for (int i = 0; i < number_of_networks; i++){
+        g_localicnt_interface[i] = LocalInterconnect::New(g_inct_config);
+        icnt_create[i] = LocalInterconnect_create;
+        icnt_init[i] = LocalInterconnect_init;
+        icnt_has_buffer[i] = LocalInterconnect_has_buffer;
+        icnt_push[i] = LocalInterconnect_push;
+        icnt_pop[i] = LocalInterconnect_pop;
+        icnt_transfer[i] = LocalInterconnect_transfer;
+        icnt_busy[i] = LocalInterconnect_busy;
+        icnt_display_stats[i] = LocalInterconnect_display_stats;
+        icnt_display_overall_stats[i] = LocalInterconnect_display_overall_stats;
+        icnt_display_state[i] = LocalInterconnect_display_state;
+        icnt_get_flit_size[i] = LocalInterconnect_get_flit_size;
+      }
       break;
     default:
       assert(0);

@@ -46,21 +46,24 @@ class Scoreboard {
   void releaseRegister(unsigned wid, unsigned regnum);
 
   bool checkCollision(unsigned wid, const inst_t *inst) const;
+  //bool checkCollisionDynamic(unsigned wid, const class inst_t* inst) const;
+  void addRegisterDynamic(unsigned warp_id);
   bool pendingWrites(unsigned wid) const;
   void printContents() const;
   const bool islongop(unsigned warp_id, unsigned regnum);
 
  private:
   void reserveRegister(unsigned wid, unsigned regnum);
-  int get_sid() const { return m_sid; }
+  unsigned int get_sid() const { return m_sid; }
 
-  unsigned m_sid;
+  unsigned int m_sid;
 
   // keeps track of pending writes to registers
   // indexed by warp id, reg_id => pending write count
   std::vector<std::set<unsigned> > reg_table;
   // Register that depend on a long operation (global, local or tex memory)
   std::vector<std::set<unsigned> > longopregs;
+  std::map<unsigned, unsigned> map_warp_id_register;
 
   class gpgpu_t *m_gpu;
 };

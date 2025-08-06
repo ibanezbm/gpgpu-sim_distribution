@@ -88,6 +88,8 @@ memory_stats_t::memory_stats_t(unsigned n_shader,
   max_mrq_latency = 0;
   max_dq_latency = 0;
   max_mf_latency = 0;
+  max_mf_latency_remote = 0;
+  max_mf_latency_local = 0;
   max_icnt2mem_latency = 0;
   max_icnt2sh_latency = 0;
   tot_icnt2mem_latency = 0;
@@ -101,13 +103,21 @@ memory_stats_t::memory_stats_t(unsigned n_shader,
   memset(icnt2sh_lat_table, 0, sizeof(unsigned) * 24);
   memset(mf_lat_pw_table, 0, sizeof(unsigned) * 32);
   mf_num_lat_pw = 0;
+  mf_num_lat_pw_remote = 0;
+  mf_num_lat_pw_local = 0;
   max_warps =
       n_shader *
       (shader_config->n_thread_per_shader / shader_config->warp_size + 1);
   mf_tot_lat_pw = 0;  // total latency summed up per window. divide by
                       // mf_num_lat_pw to obtain average latency Per Window
+  mf_tot_lat_pw_remote = 0;
+  mf_tot_lat_pw_local = 0;
   mf_total_lat = 0;
+  mf_total_lat_remote = 0;
+  mf_total_lat_local = 0;
   num_mfs = 0;
+  num_mfs_remote = 0;
+  num_mfs_local = 0;
   printf("*** Initializing Memory Statistics ***\n");
   totalbankreads =
       (unsigned int **)calloc(mem_config->m_n_mem, sizeof(unsigned int *));
@@ -192,6 +202,13 @@ unsigned memory_stats_t::memlatstat_done(mem_fetch *mf) {
       (m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) - mf->get_timestamp();
   mf_num_lat_pw++;
   mf_tot_lat_pw += mf_latency;
+  if (mf->get_chiplet() != mf->chiptlet_destino){
+    mf_tot_lat_pw_remote += mf_latency;
+    mf_num_lat_pw_remote++;
+  }else{
+    mf_tot_lat_pw_local += mf_latency;
+    mf_num_lat_pw_local++;
+  }
   unsigned idx = LOGB2(mf_latency);
   assert(idx < 32);
   mf_lat_table[idx]++;
@@ -199,6 +216,12 @@ unsigned memory_stats_t::memlatstat_done(mem_fetch *mf) {
   mf_total_lat_table[mf->get_tlx_addr().chip][mf->get_tlx_addr().bk] +=
       mf_latency;
   if (mf_latency > max_mf_latency) max_mf_latency = mf_latency;
+  if (mf->get_chiplet() != mf->chiptlet_destino && mf_latency > max_mf_latency_remote ){
+    max_mf_latency_remote = mf_latency;
+  }else if(mf->get_chiplet() == mf->chiptlet_destino && mf_latency > max_mf_latency_local){
+    max_mf_latency_local = mf_latency;
+  }
+
   return mf_latency;
 }
 
@@ -269,10 +292,18 @@ void memory_stats_t::memlatstat_lat_pw() {
   if (mf_num_lat_pw && m_memory_config->gpgpu_memlatency_stat) {
     assert(mf_tot_lat_pw);
     mf_total_lat += mf_tot_lat_pw;
+    mf_total_lat_remote += mf_tot_lat_pw_remote;
+    mf_total_lat_local += mf_tot_lat_pw_local;
     num_mfs += mf_num_lat_pw;
+    num_mfs_remote += mf_num_lat_pw_remote;
+    num_mfs_local += mf_num_lat_pw_local;
     mf_lat_pw_table[LOGB2(mf_tot_lat_pw / mf_num_lat_pw)]++;
     mf_tot_lat_pw = 0;
+    mf_tot_lat_pw_remote = 0;
+    mf_tot_lat_pw_local = 0;
     mf_num_lat_pw = 0;
+    mf_num_lat_pw_remote = 0;
+    mf_num_lat_pw_local = 0;
   }
 }
 
@@ -288,12 +319,17 @@ void memory_stats_t::memlatstat_print(unsigned n_mem, unsigned gpu_mem_n_bk) {
       printf("average_mf_SST_latency = %lld \n", mf_total_lat / num_mfs);
   } else if (m_memory_config->gpgpu_memlatency_stat) {
     printf("maxmflatency = %d \n", max_mf_latency);
+    printf("maxmflatency_remote = %d \n", max_mf_latency_remote);
+    printf("maxmflatency_local = %d \n", max_mf_latency_local);
     printf("max_icnt2mem_latency = %d \n", max_icnt2mem_latency);
     printf("maxmrqlatency = %d \n", max_mrq_latency);
     // printf("maxdqlatency = %d \n", max_dq_latency);
     printf("max_icnt2sh_latency = %d \n", max_icnt2sh_latency);
     if (num_mfs) {
       printf("averagemflatency = %lld \n", mf_total_lat / num_mfs);
+      printf("averagemflatency_remote = %lld \n", mf_total_lat_remote / num_mfs_remote);
+       if (num_mfs_local)
+      printf("averagemflatency_local = %lld \n", mf_total_lat_local / num_mfs_local);
       printf("avg_icnt2mem_latency = %lld \n", tot_icnt2mem_latency / num_mfs);
       if (tot_mrq_num)
         printf("avg_mrq_latency = %lld \n", tot_mrq_latency / tot_mrq_num);

@@ -55,11 +55,21 @@ linear_to_raw_address_translation::linear_to_raw_address_translation() {
 }
 
 void linear_to_raw_address_translation::addrdec_setoption(option_parser_t opp) {
+  option_parser_register(opp, "-gpgpu_virtual_memory", OPT_BOOL,
+                         &virtual_memory, "Virtual memory (1=on 0=off)","0");
+  option_parser_register(opp, "-gpgpu_page_size", OPT_INT32,
+                         &page_size, "Virtual memory page size","1024");
+  option_parser_register(opp, "-gpgpu_page_type", OPT_CSTR,
+                         &page_type, "Virtual memory page type","default");
+  option_parser_register(opp, "-gpgpu_page_string", OPT_CSTR,
+                         &page_string, "Virtual memory page string","");
   option_parser_register(opp, "-gpgpu_mem_addr_mapping", OPT_CSTR,
                          &addrdec_option,
                          "mapping memory address to dram model {dramid@<start "
                          "bit>;<memory address map>}",
                          NULL);
+  option_parser_register(opp, "-gpgpu_repeted", OPT_INT32,
+                         &repet, "Element to repet","0");
   option_parser_register(
       opp, "-gpgpu_mem_addr_test", OPT_BOOL, &run_test,
       "run sweep test to check address mapping for aliased address", "0");
@@ -92,12 +102,16 @@ new_addr_type linear_to_raw_address_translation::partition_address(
   }
 }
 
-void linear_to_raw_address_translation::addrdec_tlx(new_addr_type addr,
-                                                    addrdec_t *tlx) const {
+void linear_to_raw_address_translation::addrdec_tlx_const(new_addr_type addr,
+                                                    addrdec_t *tlx, unsigned chip) const{
   unsigned long long int addr_for_chip, rest_of_addr, rest_of_addr_high_bits;
   if (!gap) {
-    tlx->chip = addrdec_packbits(addrdec_mask[CHIP], addr, addrdec_mkhigh[CHIP],
+    if(virtual_memory){
+      tlx->chip = chip % n_chiplets;
+    }else{
+      tlx->chip = addrdec_packbits(addrdec_mask[CHIP], addr, addrdec_mkhigh[CHIP],
                                  addrdec_mklow[CHIP]);
+    }
     tlx->bk = addrdec_packbits(addrdec_mask[BK], addr, addrdec_mkhigh[BK],
                                addrdec_mklow[BK]);
     tlx->row = addrdec_packbits(addrdec_mask[ROW], addr, addrdec_mkhigh[ROW],
@@ -200,6 +214,159 @@ void linear_to_raw_address_translation::addrdec_tlx(new_addr_type addr,
                        (tlx->bk & sub_partition_addr_mask);
 }
 
+void linear_to_raw_address_translation::addrdec_tlx(new_addr_type addr,
+                                                    addrdec_t *tlx, unsigned chiplet){
+  unsigned long long int addr_for_chip, rest_of_addr, rest_of_addr_high_bits;
+  if (!gap) {
+    if(virtual_memory){
+      if(strcmp(page_type,"default")==0 || strcmp(page_type,"mult")==0){
+        tlx->chip = this->physical_chip[virtual_table[addr & ~(page_size-1)]];
+        if( repet && addr >= repet_min && addr < repet_max ){
+          tlx->chip = chiplet;
+        }
+        //printf("CHIP %d %llu ",tlx->chip, addr);
+      }else{
+        tlx->chip = this->physical_chip[virtual_table[addr]];
+      }
+    }else{
+      tlx->chip = addrdec_packbits(addrdec_mask[CHIP], addr, addrdec_mkhigh[CHIP],
+                                 addrdec_mklow[CHIP]);
+    }
+    tlx->bk = addrdec_packbits(addrdec_mask[BK], addr, addrdec_mkhigh[BK],
+                               addrdec_mklow[BK]);
+    tlx->row = addrdec_packbits(addrdec_mask[ROW], addr, addrdec_mkhigh[ROW],
+                                addrdec_mklow[ROW]);
+    tlx->col = addrdec_packbits(addrdec_mask[COL], addr, addrdec_mkhigh[COL],
+                                addrdec_mklow[COL]);
+    tlx->burst = addrdec_packbits(addrdec_mask[BURST], addr,
+                                  addrdec_mkhigh[BURST], addrdec_mklow[BURST]);
+    rest_of_addr_high_bits =
+        (addr >> (ADDR_CHIP_S + (log2channel + log2sub_partition)));
+
+  } else {
+    // Split the given address at ADDR_CHIP_S into (MSBs,LSBs)
+    // - extract chip address using modulus of MSBs
+    // - recreate the rest of the address by stitching the quotient of MSBs and
+    // the LSBs
+    addr_for_chip = (addr >> ADDR_CHIP_S) % m_n_channel;
+    rest_of_addr = ((addr >> ADDR_CHIP_S) / m_n_channel) << ADDR_CHIP_S;
+    rest_of_addr_high_bits = ((addr >> ADDR_CHIP_S) / m_n_channel);
+    rest_of_addr |= addr & ((1 << ADDR_CHIP_S) - 1);
+    if(virtual_memory){
+      tlx->chip = this->physical_chip[virtual_table[addr]];
+    }else{
+      tlx->chip = addr_for_chip;
+    }
+    tlx->bk = addrdec_packbits(addrdec_mask[BK], rest_of_addr,
+                               addrdec_mkhigh[BK], addrdec_mklow[BK]);
+    tlx->row = addrdec_packbits(addrdec_mask[ROW], rest_of_addr,
+                                addrdec_mkhigh[ROW], addrdec_mklow[ROW]);
+    tlx->col = addrdec_packbits(addrdec_mask[COL], rest_of_addr,
+                                addrdec_mkhigh[COL], addrdec_mklow[COL]);
+    tlx->burst = addrdec_packbits(addrdec_mask[BURST], rest_of_addr,
+                                  addrdec_mkhigh[BURST], addrdec_mklow[BURST]);
+  }
+
+  switch (memory_partition_indexing) {
+    case CONSECUTIVE:
+      // Do nothing
+      break;
+    case BITWISE_PERMUTATION: {
+      assert(!gap);
+      tlx->chip =
+          bitwise_hash_function(rest_of_addr_high_bits, tlx->chip, m_n_channel);
+      assert(tlx->chip < m_n_channel);
+      break;
+    }
+    case IPOLY: {
+      // assert(!gap);
+      unsigned sub_partition_addr_mask = m_n_sub_partition_in_channel - 1;
+      unsigned sub_partition = tlx->chip * m_n_sub_partition_in_channel +
+                               (tlx->bk & sub_partition_addr_mask);
+      sub_partition = ipoly_hash_function(
+          rest_of_addr_high_bits, sub_partition,
+          nextPowerOf2_m_n_channel * m_n_sub_partition_in_channel);
+
+      if (gap)  // if it is not 2^n partitions, then take modular
+        sub_partition =
+            sub_partition % (m_n_channel * m_n_sub_partition_in_channel);
+
+      tlx->chip = sub_partition / m_n_sub_partition_in_channel;
+      tlx->sub_partition = sub_partition;
+      assert(tlx->chip < m_n_channel);
+      assert(tlx->sub_partition < m_n_channel * m_n_sub_partition_in_channel);
+      return;
+      break;
+    }
+    case RANDOM: {
+      // This is an unrealistic hashing using software hashtable
+      // we generate a random set for each memory address and save the value in
+      new_addr_type chip_address = (addr >> (ADDR_CHIP_S - log2sub_partition));
+      tr1_hash_map<new_addr_type, unsigned>::const_iterator got =
+          address_random_interleaving.find(chip_address);
+      if (got == address_random_interleaving.end()) {
+        unsigned new_chip_id =
+            rand() % (m_n_channel * m_n_sub_partition_in_channel);
+        address_random_interleaving[chip_address] = new_chip_id;
+        tlx->chip = new_chip_id / m_n_sub_partition_in_channel;
+        tlx->sub_partition = new_chip_id;
+      } else {
+        unsigned new_chip_id = got->second;
+        tlx->chip = new_chip_id / m_n_sub_partition_in_channel;
+        tlx->sub_partition = new_chip_id;
+      }
+
+      assert(tlx->chip < m_n_channel);
+      assert(tlx->sub_partition < m_n_channel * m_n_sub_partition_in_channel);
+      return;
+      break;
+    }
+    case CUSTOM:
+      /* No custom set function implemented */
+      // Do you custom index here
+      break;
+    default:
+      assert("\nUndefined set index function.\n" && 0);
+      break;
+  }
+
+  // combine the chip address and the lower bits of DRAM bank address to form
+  // the subpartition ID
+  unsigned sub_partition_addr_mask = m_n_sub_partition_in_channel - 1;
+  tlx->sub_partition = tlx->chip * m_n_sub_partition_in_channel +
+                       (tlx->bk & sub_partition_addr_mask);
+}
+void linear_to_raw_address_translation::page_stringparse( const char * option){
+
+  // String stream to read the input string
+  std::stringstream ss(option);
+  std::string segment;
+  int i = 0;
+  // Split the string by ';'
+  while (std::getline(ss, segment, ';')) {
+      // Find the position of ':'
+      size_t colonPos = segment.find(':');
+      if (colonPos == std::string::npos) {
+          continue;
+      }
+
+      // Extract the factor before ':'
+      int factor = std::stoi(segment.substr(0, colonPos));
+
+      // Extract the part after ':'
+      std::string numbers = segment.substr(colonPos + 1);
+      std::stringstream numStream(numbers);
+      std::string num;
+      
+      // Split the numbers by ',' and multiply by the factor
+      while (std::getline(numStream, num, ',')) {
+          int value = std::stoi(num);
+          string_page[i].push_back(value * factor);
+      }
+      i++;
+  }
+}
+
 void linear_to_raw_address_translation::addrdec_parseoption(
     const char *option) {
   unsigned int dramid_start = 0;
@@ -280,10 +447,21 @@ void linear_to_raw_address_translation::addrdec_parseoption(
 }
 
 void linear_to_raw_address_translation::init(
-    unsigned int n_channel, unsigned int n_sub_partition_in_channel) {
+    unsigned int n_channel, unsigned int n_sub_partition_in_channel,
+    unsigned n_chiplet) {
+  
+  n_chiplets = n_chiplet;
   unsigned i;
   unsigned long long int mask;
   unsigned int nchipbits = ::LOGB2_32(n_channel);
+  if(virtual_memory){
+    diff_between_chips = 0xFFFFFFFFFFFFFFFF / n_channel;
+    unsigned long long physical = 0;
+    for (unsigned i = 0 ; i < n_channel; i++){
+      chip_to_last_physical[i] = physical;
+      physical+=diff_between_chips;
+    }
+  }
   log2channel = nchipbits;
   log2sub_partition = ::LOGB2_32(n_sub_partition_in_channel);
   m_n_channel = n_channel;
@@ -325,7 +503,13 @@ void linear_to_raw_address_translation::init(
       addrdec_mask[ROW] = 0x000000000FFFE000;
       addrdec_mask[COL] = 0x00000000000007FF;
       break;
-
+    case 13:
+      ADDR_CHIP_S = 13;
+      addrdec_mask[CHIP] = 0x0000000000000000;
+      addrdec_mask[BK] = 0x0000000000007000;
+      addrdec_mask[ROW] = 0x00000000FFFF8000;
+      addrdec_mask[COL] = 0x0000000000000FFF;
+      break;
     case 14:
       ADDR_CHIP_S = 14;
       addrdec_mask[CHIP] = 0x0000000000000000;
@@ -395,6 +579,7 @@ void linear_to_raw_address_translation::init(
   }
 
   if (addrdec_option != NULL) addrdec_parseoption(addrdec_option);
+  if (strcmp(page_string, "") != 0) page_stringparse(page_string);
 
   if (ADDR_CHIP_S != -1) {
     if (!gap) {
@@ -508,7 +693,7 @@ void linear_to_raw_address_translation::sweep_test() const {
 
   for (new_addr_type raw_addr = 4; raw_addr < sweep_range; raw_addr += 4) {
     addrdec_t tlx;
-    addrdec_tlx(raw_addr, &tlx);
+    addrdec_tlx(raw_addr, &tlx, -1);
 
     history_map_t::iterator h = history_map.find(tlx);
 

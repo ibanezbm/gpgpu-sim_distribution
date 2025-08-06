@@ -148,8 +148,8 @@ void xbar_router::RR_Advance() {
       }
     }
   }
-  next_node_id = next_node_id + 1;
-  next_node_id = (next_node_id % total_nodes);
+
+  next_node_id = ((next_node_id + 1) % total_nodes);
 
   conflicts += conflict_sub;
   if (active) {
@@ -191,7 +191,7 @@ void xbar_router::iSLIP_Advance() {
       unsigned out_node = in_buffers[i].front().output_deviceID;
 
       if(destination_set.find(out_node) != destination_set.end()) {
-        conflict_sub++;
+          conflict_sub++;
       }
       destination_set.insert(out_node);
       active = true;
@@ -241,7 +241,7 @@ void xbar_router::iSLIP_Advance() {
             reqs++;
             break;
           }
-      }
+        }
     } else {
       out_buffer_full++;
     }

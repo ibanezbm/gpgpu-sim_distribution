@@ -61,6 +61,8 @@ class memory_stats_t {
   unsigned max_mrq_latency;
   unsigned max_dq_latency;
   unsigned max_mf_latency;
+  unsigned max_mf_latency_remote;
+  unsigned max_mf_latency_local;
   unsigned max_icnt2mem_latency;
   unsigned long long int tot_icnt2mem_latency;
   unsigned long long int tot_icnt2sh_latency;
@@ -75,14 +77,22 @@ class memory_stats_t {
   unsigned mf_lat_pw_table[32];  // table storing values of mf latency Per
                                  // Window
   unsigned mf_num_lat_pw;
+  unsigned mf_num_lat_pw_remote;
+  unsigned mf_num_lat_pw_local;
   unsigned max_warps;
   unsigned mf_tot_lat_pw;  // total latency summed up per window. divide by
                            // mf_num_lat_pw to obtain average latency Per Window
+  unsigned mf_tot_lat_pw_remote;
+  unsigned mf_tot_lat_pw_local;
   unsigned long long int mf_total_lat;
+  unsigned long long int mf_total_lat_remote;
+  unsigned long long int mf_total_lat_local;
   unsigned long long int *
       *mf_total_lat_table;      // mf latency sums[dram chip id][bank id]
   unsigned **mf_max_lat_table;  // mf latency sums[dram chip id][bank id]
   unsigned num_mfs;
+  unsigned num_mfs_remote;
+  unsigned num_mfs_local;
   unsigned int ***bankwrites;  // bankwrites[shader id][dram chip id][bank id]
   unsigned int ***bankreads;   // bankreads[shader id][dram chip id][bank id]
   unsigned int **totalbankwrites;    // bankwrites[dram chip id][bank id]

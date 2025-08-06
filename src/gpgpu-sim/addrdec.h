@@ -61,15 +61,31 @@ class linear_to_raw_address_translation {
  public:
   linear_to_raw_address_translation();
   void addrdec_setoption(option_parser_t opp);
-  void init(unsigned int n_channel, unsigned int n_sub_partition_in_channel);
+  void init(unsigned int n_channel, unsigned int n_sub_partition_in_channel, unsigned n_chiplet);
 
   // accessors
-  void addrdec_tlx(new_addr_type addr, addrdec_t *tlx) const;
+  void addrdec_tlx(new_addr_type addr, addrdec_t *tlx, unsigned chip);
+  void addrdec_tlx_const(new_addr_type addr, addrdec_t *tlx, unsigned chip);
   new_addr_type partition_address(new_addr_type addr) const;
+  void page_stringparse(const char * option);
+  bool virtual_memory;
+  unsigned page_size = 4096;
+  const char * page_type = "default";
+  const char * page_string = "";
+  unsigned repet = 0;
+  unsigned long long repet_min = 0;
+  unsigned long long repet_max = 0;
+  std::map<int,std::vector<int>> string_page;
+  unsigned malloc_times = 0;
+  unsigned long long diff_between_chips = 0;
+  std::map<new_addr_type, new_addr_type> virtual_table;
+  std::map<new_addr_type, unsigned> physical_chip;
+  std::map<unsigned, new_addr_type> chip_to_last_physical;
+  unsigned n_chiplets;
 
  private:
   void addrdec_parseoption(const char *option);
-  void sweep_test() const;  // sanity check to ensure no overlapping
+  void sweep_test();  // sanity check to ensure no overlapping
 
   enum { CHIP = 0, BK = 1, ROW = 2, COL = 3, BURST = 4, N_ADDRDEC };
 
