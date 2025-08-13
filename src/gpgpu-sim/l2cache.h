@@ -42,7 +42,7 @@ class mem_fetch;
 
 class partition_mf_allocator : public mem_fetch_allocator {
  public:
-  partition_mf_allocator(const memory_config *config) {
+  partition_mf_allocator(memory_config *config) {
     m_memory_config = config;
   }
   virtual mem_fetch *alloc(const class warp_inst_t &inst,
@@ -57,14 +57,14 @@ class partition_mf_allocator : public mem_fetch_allocator {
   virtual mem_fetch *alloc(new_addr_type addr, mem_access_type type,
                            const active_mask_t &active_mask,
                            const mem_access_byte_mask_t &byte_mask,
-                           const mem_access_sector_mask_t &sector_mask,
+                           const mem_access_sector_mask_t &sector_mask, int cta_id,
                            unsigned size, bool wr, unsigned long long cycle,
-                           unsigned wid, unsigned sid, unsigned tpc,
+                           unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet,
                            mem_fetch *original_mf,
                            unsigned long long streamID) const;
 
  private:
-  const memory_config *m_memory_config;
+  memory_config *m_memory_config;
 };
 
 // Memory partition unit contains all the units assolcated with a single DRAM
@@ -73,8 +73,8 @@ class partition_mf_allocator : public mem_fetch_allocator {
 // - It does not connect directly with the interconnection network.
 class memory_partition_unit {
  public:
-  memory_partition_unit(unsigned partition_id, const memory_config *config,
-                        class memory_stats_t *stats, class gpgpu_sim *gpu);
+  memory_partition_unit(unsigned partition_id, unsigned m_chiplet, unsigned device,
+                        memory_config *config, class memory_stats_t *stats, class gpgpu_sim *gpu);
   ~memory_partition_unit();
 
   bool busy() const;
@@ -106,14 +106,17 @@ class memory_partition_unit {
 
   unsigned get_mpid() const { return m_id; }
 
-  class gpgpu_sim *get_mgpu() const { return m_gpu; }
+  class gpgpu_sim *get_mgpu() const {
+    return m_gpu;
+  }
 
  private:
   unsigned m_id;
-  const memory_config *m_config;
+  memory_config *m_config;
   class memory_stats_t *m_stats;
   class memory_sub_partition **m_sub_partition;
   class dram_t *m_dram;
+  unsigned m_chiplet;
 
   class arbitration_metadata {
    public:
@@ -159,8 +162,8 @@ class memory_partition_unit {
 
 class memory_sub_partition {
  public:
-  memory_sub_partition(unsigned sub_partition_id, const memory_config *config,
-                       class memory_stats_t *stats, class gpgpu_sim *gpu);
+  memory_sub_partition(unsigned sub_partition_id, unsigned chiplet, unsigned device, 
+                       memory_config *config, class memory_stats_t *stats, class gpgpu_sim *gpu);
   ~memory_sub_partition();
 
   unsigned get_id() const { return m_id; }
@@ -198,7 +201,8 @@ class memory_sub_partition {
   // Support for getting per-window L2 stats for AerialVision
   void get_L2cache_sub_stats_pw(struct cache_sub_stats_pw &css) const;
   void clear_L2cache_stats_pw();
-
+  unsigned get_chiplet(){return m_chiplet;}
+  unsigned get_device(){return m_device;}
   void force_l2_tag_update(new_addr_type addr, unsigned time,
                            mem_access_sector_mask_t mask) {
     m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
@@ -208,7 +212,9 @@ class memory_sub_partition {
  private:
   // data
   unsigned m_id;  //< the global sub partition ID
-  const memory_config *m_config;
+  unsigned m_chiplet;
+  unsigned m_device;
+  memory_config *m_config;
   class l2_cache *m_L2cache;
   class L2interface *m_L2interface;
   class gpgpu_sim *m_gpu;
@@ -251,12 +257,18 @@ class L2interface : public mem_fetch_interface {
  public:
   L2interface(memory_sub_partition *unit) { m_unit = unit; }
   virtual ~L2interface() {}
-  virtual bool full(unsigned size, bool write) const {
+  bool full(unsigned size, bool write, mem_fetch* mf) const override {
     // assume read and write packets all same size
     return m_unit->m_L2_dram_queue->full();
   }
-  virtual void push(mem_fetch *mf) {
+
+  void push(mem_fetch *mf) override{
     mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE, 0 /*FIXME*/);
+    m_unit->m_L2_dram_queue->push(mf);
+  }
+
+  void push(mem_fetch *mf, unsigned long long cycle) {
+    mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE, cycle /*FIXME*/);
     m_unit->m_L2_dram_queue->push(mf);
   }
 

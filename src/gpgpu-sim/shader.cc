@@ -50,10 +50,20 @@
 #include "stat-tool.h"
 #include "traffic_breakdown.h"
 #include "visualizer.h"
+#include "l2cache.h"
 
 #define PRIORITIZE_MSHR_OVER_WB 1
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+unsigned shader_core_config::mem2device(unsigned module, unsigned memid) const { 
+  if (n_simt_clusters % n_chiplet!= 0 &&
+   module < n_simt_clusters % n_chiplet){
+    return memid + n_simt_clusters/(n_chiplet) + 1;
+  }else{
+    return memid + n_simt_clusters/(n_chiplet);
+  }
+}
 
 mem_fetch *shader_core_mem_fetch_allocator::alloc(
     new_addr_type addr, mem_access_type type, unsigned size, bool wr,
@@ -61,21 +71,21 @@ mem_fetch *shader_core_mem_fetch_allocator::alloc(
   mem_access_t access(type, addr, size, wr, m_memory_config->gpgpu_ctx);
   mem_fetch *mf = new mem_fetch(
       access, NULL, streamID, wr ? WRITE_PACKET_SIZE : READ_PACKET_SIZE, -1,
-      m_core_id, m_cluster_id, m_memory_config, cycle);
+      m_core_id, m_cluster_id, m_chiplet, m_memory_config, cycle);
   return mf;
 }
 
 mem_fetch *shader_core_mem_fetch_allocator::alloc(
     new_addr_type addr, mem_access_type type, const active_mask_t &active_mask,
     const mem_access_byte_mask_t &byte_mask,
-    const mem_access_sector_mask_t &sector_mask, unsigned size, bool wr,
-    unsigned long long cycle, unsigned wid, unsigned sid, unsigned tpc,
+    const mem_access_sector_mask_t &sector_mask, int cta_id, unsigned size, bool wr,
+    unsigned long long cycle, unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet,
     mem_fetch *original_mf, unsigned long long streamID) const {
-  mem_access_t access(type, addr, size, wr, active_mask, byte_mask, sector_mask,
+  mem_access_t access(type, addr, size, wr, active_mask, byte_mask, sector_mask, cta_id,
                       m_memory_config->gpgpu_ctx);
   mem_fetch *mf = new mem_fetch(
       access, NULL, streamID, wr ? WRITE_PACKET_SIZE : READ_PACKET_SIZE, wid,
-      m_core_id, m_cluster_id, m_memory_config, cycle, original_mf);
+      m_core_id, m_cluster_id, m_chiplet, m_memory_config, cycle, original_mf);
   return mf;
 }
 /////////////////////////////////////////////////////////////////////////////
@@ -408,30 +418,30 @@ void shader_core_ctx::create_exec_pipeline() {
 
   // m_fu = new simd_function_unit*[m_num_function_units];
 
-  for (unsigned k = 0; k < m_config->gpgpu_num_sp_units; k++) {
+  for (int k = 0; k < m_config->gpgpu_num_sp_units; k++) {
     m_fu.push_back(new sp_unit(&m_pipeline_reg[EX_WB], m_config, this, k));
     m_dispatch_port.push_back(ID_OC_SP);
     m_issue_port.push_back(OC_EX_SP);
   }
 
-  for (unsigned k = 0; k < m_config->gpgpu_num_dp_units; k++) {
+  for (int k = 0; k < m_config->gpgpu_num_dp_units; k++) {
     m_fu.push_back(new dp_unit(&m_pipeline_reg[EX_WB], m_config, this, k));
     m_dispatch_port.push_back(ID_OC_DP);
     m_issue_port.push_back(OC_EX_DP);
   }
-  for (unsigned k = 0; k < m_config->gpgpu_num_int_units; k++) {
+  for (int k = 0; k < m_config->gpgpu_num_int_units; k++) {
     m_fu.push_back(new int_unit(&m_pipeline_reg[EX_WB], m_config, this, k));
     m_dispatch_port.push_back(ID_OC_INT);
     m_issue_port.push_back(OC_EX_INT);
   }
 
-  for (unsigned k = 0; k < m_config->gpgpu_num_sfu_units; k++) {
+  for (int k = 0; k < m_config->gpgpu_num_sfu_units; k++) {
     m_fu.push_back(new sfu(&m_pipeline_reg[EX_WB], m_config, this, k));
     m_dispatch_port.push_back(ID_OC_SFU);
     m_issue_port.push_back(OC_EX_SFU);
   }
 
-  for (unsigned k = 0; k < m_config->gpgpu_num_tensor_core_units; k++) {
+  for (int k = 0; k < m_config->gpgpu_num_tensor_core_units; k++) {
     m_fu.push_back(new tensor_core(&m_pipeline_reg[EX_WB], m_config, this, k));
     m_dispatch_port.push_back(ID_OC_TENSOR_CORE);
     m_issue_port.push_back(OC_EX_TENSOR_CORE);
@@ -470,7 +480,7 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
                                  class simt_core_cluster *cluster,
                                  unsigned shader_id, unsigned tpc_id,
                                  const shader_core_config *config,
-                                 const memory_config *mem_config,
+                                 memory_config *mem_config,
                                  shader_core_stats *stats)
     : core_t(gpu, NULL, config->warp_size, config->n_thread_per_shader),
       m_barriers(this, config->max_warps_per_shader, config->max_cta_per_core,
@@ -990,7 +1000,7 @@ void shader_core_ctx::fetch() {
           mem_access_t acc(INST_ACC_R, ppc, nbytes, false, m_gpu->gpgpu_ctx);
           mem_fetch *mf = new mem_fetch(
               acc, NULL, m_warp[warp_id]->get_kernel_info()->get_streamID(),
-              READ_PACKET_SIZE, warp_id, m_sid, m_tpc, m_memory_config,
+              READ_PACKET_SIZE, warp_id, m_sid, m_tpc, m_chiplet, m_memory_config,
               m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
           std::list<cache_event> events;
           enum cache_request_status status;
@@ -1025,10 +1035,10 @@ void shader_core_ctx::fetch() {
   m_L1I->cycle();
 }
 
-void exec_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
+void exec_shader_core_ctx::func_exec_inst(warp_inst_t &inst, int cta_id) {
   execute_warp_inst_t(inst);
   if (inst.is_load() || inst.is_store()) {
-    inst.generate_mem_accesses();
+    inst.generate_mem_accesses(cta_id);
     // inst.print_m_accessq();
   }
 }
@@ -1049,7 +1059,7 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
       m_warp[warp_id]->get_dynamic_warp_id(), sch_id,
       m_warp[warp_id]->get_streamID());  // dynamic instruction information
   m_stats->shader_cycle_distro[2 + (*pipe_reg)->active_count()]++;
-  func_exec_inst(**pipe_reg);
+  func_exec_inst(**pipe_reg, m_warp[warp_id]->get_cta_id());
 
   // Add LDGSTS instructions into a buffer
   unsigned int ldgdepbar_id = m_warp[warp_id]->m_ldgdepbar_id;
@@ -1102,9 +1112,9 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
     // Check for the case that the LDGSTSs monitored have finished when
     // encountering the DEPBAR instruction
     bool done_flag = true;
-    for (int i = 0; i < end_group; i++) {
-      for (int j = 0; j < m_warp[warp_id]->m_ldgdepbar_buf[i].size(); j++) {
-        if (m_warp[warp_id]->m_ldgdepbar_buf[i][j].pc != -1) {
+    for (unsigned i = 0; i < end_group; i++) {
+      for (std::size_t j = 0; j < m_warp[warp_id]->m_ldgdepbar_buf[i].size(); j++) {
+        if (m_warp[warp_id]->m_ldgdepbar_buf[i][j].pc != static_cast<address_type>(-1)) {
           done_flag = false;
           goto UpdateDEPBAR;
         }
@@ -1119,7 +1129,7 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
     }
   }
 
-  updateSIMTStack(warp_id, *pipe_reg);
+  updateSIMTStack(warp_id, *pipe_reg, false);
 
   m_scoreboard->reserveRegisters(*pipe_reg);
   m_warp[warp_id]->set_next_pc(next_inst->pc + next_inst->isize);
@@ -1870,8 +1880,8 @@ void shader_core_ctx::unset_depbar(const warp_inst_t &inst) {
                                   m_warp[inst.warp_id()]->m_depbar_group + 1);
 
   if (inst.m_is_ldgsts) {
-    for (int i = 0; i < m_warp[inst.warp_id()]->m_ldgdepbar_buf.size(); i++) {
-      for (int j = 0; j < m_warp[inst.warp_id()]->m_ldgdepbar_buf[i].size();
+    for (std::size_t i = 0; i < m_warp[inst.warp_id()]->m_ldgdepbar_buf.size(); i++) {
+      for (std::size_t j = 0; j < m_warp[inst.warp_id()]->m_ldgdepbar_buf[i].size();
            j++) {
         if (m_warp[inst.warp_id()]->m_ldgdepbar_buf[i][j].pc == inst.pc) {
           // Handle the case that same pc results in multiple LDGSTS
@@ -1886,10 +1896,10 @@ void shader_core_ctx::unset_depbar(const warp_inst_t &inst) {
     }
 
   DoneWB:
-    for (int i = 0; i < end_group; i++) {
-      for (int j = 0; j < m_warp[inst.warp_id()]->m_ldgdepbar_buf[i].size();
+    for (unsigned i = 0; i < end_group; i++) {
+      for (std::size_t j = 0; j < m_warp[inst.warp_id()]->m_ldgdepbar_buf[i].size();
            j++) {
-        if (m_warp[inst.warp_id()]->m_ldgdepbar_buf[i][j].pc != -1) {
+        if (m_warp[inst.warp_id()]->m_ldgdepbar_buf[i][j].pc != static_cast<address_type>(-1)) {
           done_flag = false;
           goto UpdateDEPBAR;
         }
@@ -2292,7 +2302,9 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
       // is not a virtual method in parent class
       stall_cond = ICNT_RC_FAIL;
     } else if (!m_memory_config->SST_mode &&
-               (m_icnt->full(size, inst.is_store() || inst.isatomic()))) {
+               (m_icnt->full(size, inst.is_store() || inst.isatomic(), m_mf_allocator->alloc(inst, access,
+                                m_core->get_gpu()->gpu_sim_cycle +
+                                    m_core->get_gpu()->gpu_tot_sim_cycle)))) {
       stall_cond = ICNT_RC_FAIL;
     } else {
       mem_fetch *mf =
@@ -2588,7 +2600,7 @@ void ldst_unit::init(mem_fetch_interface *icnt,
                      shader_core_mem_fetch_allocator *mf_allocator,
                      shader_core_ctx *core, opndcoll_rfu_t *operand_collector,
                      Scoreboard *scoreboard, const shader_core_config *config,
-                     const memory_config *mem_config, shader_core_stats *stats,
+                     memory_config *mem_config, shader_core_stats *stats,
                      unsigned sid, unsigned tpc) {
   m_memory_config = mem_config;
   m_icnt = icnt;
@@ -2624,11 +2636,11 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
                      shader_core_mem_fetch_allocator *mf_allocator,
                      shader_core_ctx *core, opndcoll_rfu_t *operand_collector,
                      Scoreboard *scoreboard, const shader_core_config *config,
-                     const memory_config *mem_config, shader_core_stats *stats,
+                     memory_config *mem_config, shader_core_stats *stats,
                      unsigned sid, unsigned tpc, gpgpu_sim *gpu)
     : pipelined_simd_unit(NULL, config, config->smem_latency, core, 0),
-      m_next_wb(config),
-      m_gpu(gpu) {
+      m_gpu(gpu),
+      m_next_wb(config) {
   assert(config->smem_latency > 1);
   init(icnt, mf_allocator, core, operand_collector, scoreboard, config,
        mem_config, stats, sid, tpc);
@@ -2637,7 +2649,7 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     snprintf(L1D_name, STRSIZE, "L1D_%03d", m_sid);
     m_L1D = new l1_cache(L1D_name, m_config->m_L1D_config, m_sid,
                          get_shader_normal_cache_id(), m_icnt, m_mf_allocator,
-                         IN_L1D_MISS_QUEUE, core->get_gpu(), L1_GPU_CACHE);
+                         IN_L1D_MISS_QUEUE, core, this, core->get_gpu(), L1_GPU_CACHE);
 
     l1_latency_queue.resize(m_config->m_L1D_config.l1_banks);
     assert(m_config->m_L1D_config.l1_latency > 0);
@@ -2653,7 +2665,7 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
                      shader_core_mem_fetch_allocator *mf_allocator,
                      shader_core_ctx *core, opndcoll_rfu_t *operand_collector,
                      Scoreboard *scoreboard, const shader_core_config *config,
-                     const memory_config *mem_config, shader_core_stats *stats,
+                     memory_config *mem_config, shader_core_stats *stats,
                      unsigned sid, unsigned tpc, l1_cache *new_l1d_cache)
     : pipelined_simd_unit(NULL, config, 3, core, 0),
       m_L1D(new_l1d_cache),
@@ -4461,7 +4473,7 @@ void exec_simt_core_cluster::create_shader_core_ctx() {
 
 simt_core_cluster::simt_core_cluster(class gpgpu_sim *gpu, unsigned cluster_id,
                                      const shader_core_config *config,
-                                     const memory_config *mem_config,
+                                     memory_config *mem_config,
                                      shader_core_stats *stats,
                                      class memory_stats_t *mstats) {
   m_config = config;
@@ -4582,10 +4594,17 @@ void simt_core_cluster::cache_invalidate() {
     m_core[i]->cache_invalidate();
 }
 
-bool simt_core_cluster::icnt_injection_buffer_full(unsigned size, bool write) {
+bool simt_core_cluster::icnt_injection_buffer_full(unsigned size, bool write, mem_fetch* mf) {
   unsigned request_size = size;
   if (!write) request_size = READ_PACKET_SIZE;
-  return !::icnt_has_buffer(m_cluster_id, request_size);
+  unsigned destination = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+  unsigned chiplets = m_config->n_chiplet;
+  if(mf->get_tpc() % chiplets == destination){
+    return !::icnt_has_buffer[m_cluster_id % m_config->n_chiplet](m_cluster_id/m_config->n_chiplet, 
+            request_size, m_cluster_id % m_config->n_chiplet);
+  }else{
+    return !m_gpu->Ring->has_buffer_request(m_cluster_id%chiplets, destination, 0);
+  }
 }
 
 bool sst_simt_core_cluster::SST_injection_buffer_full(unsigned size, bool write,
@@ -4616,15 +4635,71 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
     packet_size = mf->get_ctrl_size();
   }
   m_stats->m_outgoing_traffic_stats->record_traffic(mf, packet_size);
-  unsigned destination = mf->get_sub_partition_id();
+
+  unsigned destination = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
   mf->set_status(IN_ICNT_TO_MEM,
                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-  if (!mf->get_is_write() && !mf->isatomic())
-    ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
-                mf->get_ctrl_size());
-  else
-    ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
-                mf->size());
+  unsigned chiplets = m_config->n_chiplet;
+  if (!mf->get_is_write() && !mf->isatomic()){
+    if (mf->get_tpc() % chiplets != destination && 
+        m_gpu->Ring->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
+      //mem_fetch *to_sm = new mem_fetch(mf->get_access(),&mf->get_inst(), (unsigned)READ_PACKET_SIZE,
+                // mf->get_wid(), mf->get_sid(), mf->get_tpc(), mf->get_mem_config(),
+                // m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf, NULL);
+      if (mf->get_pc() == m_gpu->get_config().get_remote_pc() && 
+          m_gpu->m_executed_kernel_names[0] == m_gpu->get_config().get_kernel_remote() &&
+          mf->remote){       
+        mf->set_type(TO_SM);
+        if(mf->repeted){
+          return;
+        }
+        mf->set_data_size(32*4+4*32);
+        
+        if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+          if (m_core[0]->flush_remote.find(mf->get_wid()) == m_core[0]->flush_remote.end()) {
+              m_core[0]->flush_remote.insert(mf->get_wid());
+              m_core[0]->ibuffer_free(mf->get_wid());
+          }
+          mf->set_data_size(mf->requests.size()*8+1+8*mf->number_of_threads);   
+        }else{
+          for(auto request : mf->requests){
+            if (m_core[0]->flush_remote.find(request->get_wid()) == m_core[0]->flush_remote.end()) {
+              m_core[0]->flush_remote.insert(request->get_wid());
+              m_core[0]->ibuffer_free(request->get_wid());
+            }
+          }
+          mf->set_data_size(mf->requests.size()*8+1+8*mf->number_of_threads);
+        }
+        m_gpu->traffic_information["ring_request_total_bytes"] += mf->size();
+        m_gpu->traffic_information["ring_request_actual_bytes"] += mf->size();
+        m_gpu->Ring->push_request(m_cluster_id%chiplets, destination, mf, mf->get_data_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      }else{
+        m_gpu->traffic_information["ring_request_total_bytes"] += mf->get_ctrl_size();
+        m_gpu->traffic_information["ring_request_actual_bytes"] += mf->get_ctrl_size();
+        m_gpu->Ring->push_request(m_cluster_id%chiplets, destination, mf, mf->get_ctrl_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      }
+    }else{
+      assert(mf->get_tpc() % chiplets == destination);
+      m_gpu->traffic_information["local_request_total_bytes"] += mf->size();
+      m_gpu->traffic_information["local_request_actual_bytes"] += mf->size();
+      ::icnt_push[m_cluster_id%chiplets](m_cluster_id/chiplets, 
+      m_config->mem2device(m_cluster_id%chiplets, m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_device()), 
+      (void *)mf, mf->get_ctrl_size(), m_cluster_id%chiplets);
+    }
+  }else{
+    if (mf->get_tpc() % chiplets != destination &&
+      m_gpu->Ring->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
+      m_gpu->traffic_information["ring_request_total_bytes"] += mf->size();
+      m_gpu->traffic_information["ring_request_actual_bytes"] += mf->size();
+      m_gpu->Ring->push_request(m_cluster_id%chiplets, destination ,mf, mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    }else if (mf->get_tpc() % chiplets == destination){
+      m_gpu->traffic_information["local_request_total_bytes"] += mf->size();
+      m_gpu->traffic_information["local_request_actual_bytes"] += mf->size();
+      ::icnt_push[m_cluster_id%chiplets](m_cluster_id/chiplets, 
+      m_config->mem2device(m_cluster_id%chiplets, m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_device()), 
+      (void *)mf, mf->size(),m_cluster_id%chiplets);
+    }
+  }
 }
 
 void simt_core_cluster::update_icnt_stats(class mem_fetch *mf) {
@@ -4728,25 +4803,438 @@ void simt_core_cluster::icnt_cycle() {
       }
     }
   }
+  unsigned chiplets = m_config->n_chiplet;
   if (m_response_fifo.size() < m_config->n_simt_ejection_buffer_size) {
-    mem_fetch *mf = (mem_fetch *)::icnt_pop(m_cluster_id);
-    if (!mf) return;
-    assert(mf->get_tpc() == m_cluster_id);
-    assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK);
+    mem_fetch *mf = (mem_fetch *)::icnt_pop[m_cluster_id%chiplets](m_cluster_id/chiplets, m_cluster_id%chiplets);
+    if (mf != NULL){
+      m_gpu->traffic_information["local_reply_actual_bytes"] -= mf->size();
+      assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK || mf->get_type() == TO_SM);
+      //assert(mf->get_tpc() == m_cluster_id);
 
-    // The packet size varies depending on the type of request:
-    // - For read request and atomic request, the packet contains the data
-    // - For write-ack, the packet only has control metadata
-    unsigned int packet_size =
-        (mf->get_is_write()) ? mf->get_ctrl_size() : mf->size();
-    m_stats->m_incoming_traffic_stats->record_traffic(mf, packet_size);
-    mf->set_status(IN_CLUSTER_TO_SHADER_QUEUE,
-                   m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-    // m_memory_stats->memlatstat_read_done(mf,m_shader_config->max_warps_per_shader);
-    m_response_fifo.push_back(mf);
-    m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
+      // The packet size varies depending on the type of request:
+      // - For read request and atomic request, the packet contains the data
+      // - For write-ack, the packet only has control metadata
+      unsigned int packet_size =
+          (mf->get_is_write()) ? mf->get_ctrl_size() : mf->size();
+      m_stats->m_incoming_traffic_stats->record_traffic(mf, packet_size);
+      mf->set_status(IN_CLUSTER_TO_SHADER_QUEUE,
+                    m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      // m_memory_stats->memlatstat_read_done(mf,m_shader_config->max_warps_per_shader);
+      m_response_fifo.push_back(mf);
+      m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
+    }
+  }
+
+  unsigned chiplet_reply = m_chiplet;
+  mem_fetch *mf = m_gpu->Ring->top_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, true);
+  if(mf){
+    if (mf->get_chiplet() != m_chiplet && m_gpu->Ring->has_buffer_reply(m_chiplet, mf->get_chiplet(), 0)){
+      m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, true);
+      m_gpu->Ring->push_reply(m_chiplet, mf->get_chiplet(), mf, mf->get_is_write() ? mf->get_ctrl_size() : mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    
+    }else if (mf->get_tpc() == m_cluster_id){
+      m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,true);
+      if(!m_reply_fifo.empty()){
+        mem_fetch* mem_reply = m_reply_fifo.back();
+        if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
+          m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+          chiplet_reply = mem_reply->get_chiplet();
+          m_reply_fifo.pop_back();
+        }
+      }
+      
+      assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK || mf->get_type() == TO_SM || mf->get_type() == FINISH_REMOTE);
+      
+      if (mf->get_type() == TO_SM){
+          m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+          m_response_fifo.push_back(mf);
+          m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
+      
+      }else if(mf->get_type() == FINISH_REMOTE){
+        m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+        if(m_core[0]->flush_remote.find(mf->get_wid()) != m_core[0]->flush_remote.end()){
+          //TODO CAMBIAR POR SOLO UN HILO
+          
+          if(m_gpu->get_config().get_end_remote() == 0){
+            for (unsigned i = 0; i < mf->get_active_dynamic_warp_mask().size(); i++){
+              if(mf->get_active_dynamic_warp_mask().test(i)){
+                m_core[0]->get_thread_info()[mf->get_wid()*m_core[0]->get_warp_size()+i]->unset_done();
+              }
+            }
+          }else{
+            unsigned chiplet_mf = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+            if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+              shd_warp_t* warp = m_core[0]->get_warp(mf->get_wid());
+              std::cout << warp->remote_masks[chiplet_mf] << std::endl;
+              warp->remote_masks[chiplet_mf] = std::bitset<MAX_WARP_SIZE>();
+
+              if(warp->pending_merge == NULL){
+                warp->pending_merge = mf;
+              }else{
+                active_mask_t total_mask = active_mask_t() | warp->pending_merge->get_active_dynamic_warp_mask()
+                                          | mf->get_active_dynamic_warp_mask();
+                warp->pending_merge->set_active_warp_mask(total_mask);
+              }
+              
+              if(warp->still_remote){
+                warp->still_remote = false;
+                warp->finish_start_pc = true;
+                m_core[0]->n_total_threads_remote += warp->remote_threads;
+              }
+
+              for (unsigned i = 0; i < mf->get_active_dynamic_warp_mask().size(); i++){
+                if(mf->get_active_dynamic_warp_mask().test(i)){
+                  m_core[0]->get_thread_info()[mf->get_wid()*m_core[0]->get_warp_size()+i]->unset_done();
+                  warp->remote_threads_masks[
+                    m_core[0]->get_thread_info()[mf->get_wid()*m_core[0]->get_warp_size()+i]->get_pc()
+                  ].set(i);
+                  warp->remote_threads--;
+                }
+              }
+              if(warp->remote_threads == 0){
+                m_core[0]->m_ldst_unit->m_L1D->bussy_chiplets[chiplet_mf]--;
+                m_core[0]->m_ldst_unit->m_L1D->send_warp.erase(mf->get_wid());
+                m_core[0]->m_mem_access_per_warp[std::tuple<unsigned, unsigned>(mf->get_wid(), mf->chiptlet_destino)] = 0;
+                m_core[0]->warps_remote.insert(mf->get_wid());
+                active_mask_t mask_merge = warp->pending_merge->get_active_dynamic_warp_mask();
+                active_mask_t mask_warp = active_mask_t() | warp->get_active_mask();
+               auto result = mask_warp | mask_merge; std::cout << result<< std::endl;
+                warp->set_active_mask(mask_warp | mask_merge);
+                m_core[0]->flush_remote.erase(m_core[0]->flush_remote.find(mf->get_wid()));
+              }
+            }else{
+              std::map<unsigned, active_mask_t> warps_masks;
+              m_core[0]->m_ldst_unit->m_L1D->bussy_chiplets[chiplet_mf]--;
+              assert(m_core[0]->m_ldst_unit->m_L1D->bussy_chiplets[chiplet_mf]>=0);
+              for(auto request : mf->requests){
+                active_mask_t current_mask = active_mask_t() | warps_masks[request->get_wid()];
+                active_mask_t mask = active_mask_t()| request->get_access_warp_mask();
+                warps_masks[request->get_wid()] = current_mask | mask;
+                shd_warp_t* warp = m_core[0]->get_warp(request->get_wid());
+                warp->remote_masks[chiplet_mf] = std::bitset<MAX_WARP_SIZE>();
+                
+                if(warp->still_remote){
+                  warp->still_remote = false;
+                  warp->finish_start_pc = true;
+                  m_core[0]->n_total_threads_remote += warp->remote_threads;
+                }
+
+                for (unsigned i = 0; i < request->get_access_warp_mask().size(); i++){
+                  if(request->get_access_warp_mask().test(i)){
+                    m_core[0]->get_thread_info()[request->get_wid()*m_core[0]->get_warp_size()+i]->unset_done();
+                    warp->remote_threads_masks[
+                      m_core[0]->get_thread_info()[request->get_wid()*m_core[0]->get_warp_size()+i]->get_pc()
+                    ].set(i);
+                    warp->remote_threads--;
+                    warp->set_active_mask(request->get_access_warp_mask() | warp->get_active_mask());
+                  }
+                }
+                if(warp->remote_threads == 0){
+                  m_core[0]->m_ldst_unit->m_L1D->send_warp.erase(request->get_wid());
+                  m_core[0]->m_mem_access_per_warp[std::tuple<unsigned, unsigned>(request->get_wid(), request->chiptlet_destino)] = 0;
+                  m_core[0]->warps_remote.insert(request->get_wid());
+                  m_core[0]->flush_remote.erase(m_core[0]->flush_remote.find(request->get_wid()));
+                }
+              }
+              for(int m = mf->requests.size()-1; m>=0; m--){
+                if(mf->requests[m]!=nullptr){
+                  delete mf->requests[m];
+                  mf->requests.erase(mf->requests.begin() + m);
+                }
+              }
+              delete mf;
+            }
+          }
+        }
+      }else{
+          m_gpu->traffic_information["ring_reply_actual_bytes"] -= mf->size();
+          mf->set_status(IN_CLUSTER_TO_SHADER_QUEUE,
+                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+          m_response_fifo.push_back(mf);
+          m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
+      }
+    }else{
+      if(!m_reply_fifo.empty()){
+        mem_fetch* mem_reply = m_reply_fifo.back();
+        if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
+          m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+          chiplet_reply = mem_reply->get_chiplet();
+          m_reply_fifo.pop_back();
+        }
+      }
+    }
+  }else{
+    if(!m_reply_fifo.empty()){
+      mem_fetch* mem_reply = m_reply_fifo.back();
+      if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
+        m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        chiplet_reply = mem_reply->get_chiplet();
+        m_reply_fifo.pop_back();
+      }
+    }
+  }
+  mem_fetch *mf2 = m_gpu->Ring->top_reply(m_chiplet,m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, false);
+  if(!mf2){ 
+      if(!m_reply_fifo.empty()){
+      mem_fetch* mem_reply = m_reply_fifo.back();
+      if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0) && chiplet_reply != mem_reply->get_chiplet()){
+        m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        m_reply_fifo.pop_back();
+      }
+    }
+    return;
+  }
+  
+  if (mf2->get_chiplet() != m_chiplet && m_gpu->Ring->has_buffer_reply(m_chiplet, mf2->get_chiplet(), 0)){
+    m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, false);  
+    m_gpu->Ring->push_reply(m_chiplet, mf2->get_chiplet(), mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  
+  }else if (mf2->get_tpc() == m_cluster_id){  
+    m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,false);
+    assert(mf2->get_type() == READ_REPLY || mf2->get_type() == WRITE_ACK || mf2->get_type() == TO_SM|| mf2->get_type() == FINISH_REMOTE); 
+
+    if(!m_reply_fifo.empty()){
+      mem_fetch* mem_reply = m_reply_fifo.back();
+      if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0) && chiplet_reply != mem_reply->get_chiplet()){
+        m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        m_reply_fifo.pop_back();
+      }
+    }
+
+    if (mf2->get_type() == TO_SM){ 
+        m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+        m_response_fifo.push_back(mf2);
+        m_stats->n_mem_to_simt[m_cluster_id] += mf2->get_num_flits(false);
+    
+    }else if(mf2->get_type() == FINISH_REMOTE){
+        m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+        if(m_core[0]->flush_remote.find(mf2->get_wid()) != m_core[0]->flush_remote.end()){
+          
+          //TODO CAMBIAR A UN SOLO HILO
+          if(m_gpu->get_config().get_end_remote() == 0){
+            for (unsigned i = 0; i < mf2->get_active_dynamic_warp_mask().size(); i++){
+              if(mf2->get_active_dynamic_warp_mask().test(i)){
+                m_core[0]->get_thread_info()[mf2->get_wid()*m_core[0]->get_warp_size()+i]->unset_done();
+              }
+            }
+
+          }else{
+            unsigned chiplet_mf2 = m_gpu->m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet();
+            if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+              shd_warp_t* warp = m_core[0]->get_warp(mf2->get_wid());
+              std::cout << warp->remote_masks[chiplet_mf2] << std::endl;
+              warp->remote_masks[chiplet_mf2] = std::bitset<MAX_WARP_SIZE>();
+
+              if(warp->pending_merge == NULL){
+                warp->pending_merge = mf2;
+              }else{
+                active_mask_t total_mask = active_mask_t() | warp->pending_merge->get_active_dynamic_warp_mask()
+                                          | mf2->get_active_dynamic_warp_mask();
+                warp->pending_merge->set_active_warp_mask(total_mask);
+              }
+              
+              if(warp->still_remote){
+                warp->still_remote = false;
+                warp->finish_start_pc = true;
+                m_core[0]->n_total_threads_remote += warp->remote_threads;
+              }
+
+              for (unsigned i = 0; i < mf2->get_active_dynamic_warp_mask().size(); i++){
+                if(mf2->get_active_dynamic_warp_mask().test(i)){
+                  m_core[0]->get_thread_info()[mf2->get_wid()*m_core[0]->get_warp_size()+i]->unset_done();
+                  warp->remote_threads_masks[
+                    m_core[0]->get_thread_info()[mf2->get_wid()*m_core[0]->get_warp_size()+i]->get_pc()
+                  ].set(i);
+                  warp->remote_threads--;
+                }
+              }
+              if(warp->remote_threads == 0){
+                m_core[0]->m_ldst_unit->m_L1D->bussy_chiplets[chiplet_mf2]--;
+                m_core[0]->m_ldst_unit->m_L1D->send_warp.erase(mf2->get_wid());
+                m_core[0]->m_mem_access_per_warp[std::tuple<unsigned, unsigned>(mf2->get_wid(), mf2->chiptlet_destino)] = 0;
+                m_core[0]->warps_remote.insert(mf2->get_wid());
+                active_mask_t mask_merge = warp->pending_merge->get_active_dynamic_warp_mask();
+                active_mask_t mask_warp = active_mask_t() | warp->get_active_mask();
+                warp->set_active_mask(mask_warp | mask_merge);
+                m_core[0]->flush_remote.erase(m_core[0]->flush_remote.find(mf2->get_wid()));
+              }
+            }else{
+              std::map<unsigned, active_mask_t> warps_masks;
+              m_core[0]->m_ldst_unit->m_L1D->bussy_chiplets[chiplet_mf2]--;
+              assert(m_core[0]->m_ldst_unit->m_L1D->bussy_chiplets[chiplet_mf2]>=0);
+              for(auto request : mf2->requests){
+                active_mask_t current_mask = active_mask_t() | warps_masks[request->get_wid()];
+                active_mask_t mask = active_mask_t() | request->get_access_warp_mask();
+                warps_masks[request->get_wid()] = current_mask | mask;
+                shd_warp_t* warp = m_core[0]->get_warp(request->get_wid());
+                warp->remote_masks[chiplet_mf2] = std::bitset<MAX_WARP_SIZE>();
+                
+                if(warp->still_remote){
+                  warp->still_remote = false;
+                  warp->finish_start_pc = true;
+                  m_core[0]->n_total_threads_remote += warp->remote_threads;
+                }
+
+                for (unsigned i = 0; i < request->get_access_warp_mask().size(); i++){
+                  if(request->get_access_warp_mask().test(i)){
+                    m_core[0]->get_thread_info()[request->get_wid()*m_core[0]->get_warp_size()+i]->unset_done();
+                    warp->remote_threads_masks[
+                      m_core[0]->get_thread_info()[request->get_wid()*m_core[0]->get_warp_size()+i]->get_pc()
+                    ].set(i);
+                    warp->remote_threads--;
+                    warp->set_active_mask(request->get_access_warp_mask() | warp->get_active_mask());
+                  }
+                }
+                if(warp->remote_threads == 0){
+                  m_core[0]->m_ldst_unit->m_L1D->send_warp.erase(request->get_wid());
+                  m_core[0]->m_mem_access_per_warp[std::tuple<unsigned, unsigned>(request->get_wid(), request->chiptlet_destino)] = 0;
+                  m_core[0]->warps_remote.insert(request->get_wid());
+                  m_core[0]->flush_remote.erase(m_core[0]->flush_remote.find(request->get_wid()));
+                }
+              }
+              for(int m = mf2->requests.size()-1; m>=0; m--){
+                if(mf2->requests[m]!=nullptr){
+                  delete mf2->requests[m];
+                  mf2->requests.erase(mf2->requests.begin() + m);
+                }
+              }
+              delete mf2;
+            }
+          }
+        }
+    }else{
+        m_gpu->traffic_information["ring_reply_actual_bytes"] -= mf2->size();
+        mf2->set_status(IN_CLUSTER_TO_SHADER_QUEUE,
+                    m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        m_response_fifo.push_back(mf2);
+        m_stats->n_mem_to_simt[m_cluster_id] += mf2->get_num_flits(false);
+    }
   }
 }
+
+void shader_core_ctx::add_supervised_dynamic_warp_id(shd_warp_t * warp) {
+  m_dynamic_supervised_warps.push_back(warp);
+}
+
+void shader_core_ctx::add_dynamic_warp(mem_fetch* mf, unsigned start_pc){
+  unsigned warp_id = (mf->get_sid())*32768+(mf->get_wid()+1)*1024;
+  if(strcmp("normal", m_gpu->m_config.get_remote_mode())!=0){
+    unsigned j=1;
+    while(true){
+      warp_id = (mf->get_sid())*32768+(mf->get_wid()+1)*1024+j*32;
+      if(map_warps_id_position.find(warp_id) == map_warps_id_position.end()|| 
+            m_dynamic_warp[map_warps_id_position[warp_id]] == NULL){
+        break;
+      }
+      j++;
+    }
+    create_dynamic_warp(mf, start_pc, warp_id);
+    return;
+  }
+  if (map_warps_id_position.find(warp_id) == map_warps_id_position.end()){
+    //not found
+    create_dynamic_warp(mf, start_pc, warp_id);
+  }else{
+    if(strcmp("normal", m_gpu->m_config.get_remote_mode())!=0){
+      unsigned j=0;
+      while( true){
+        warp_id = (mf->get_sid())*32768+(mf->get_wid()+1)*1024+j*32;
+        if(map_warps_id_position.find(warp_id) == map_warps_id_position.end() || 
+            m_dynamic_warp[map_warps_id_position[warp_id]] == NULL){
+          create_dynamic_warp(mf, start_pc, warp_id);
+          break;
+        }
+        j++;
+      }
+    } else { 
+      if (m_dynamic_simt_stack[map_warps_id_position[warp_id]]->m_stack.size() == 0){
+        create_dynamic_warp(mf, start_pc, warp_id);
+      }else{
+        printf("NUEVO MENSAJE %d warp:%d tpc:%d %d ", warp_id, mf->get_wid(), mf->get_tpc(),m_sid);
+        std::cout << mf->get_access_warp_mask() << std::endl;
+        warp_id = (mf->get_ctaid()+1)*1000000+(mf->get_sid()+1+32)*1000+mf->get_wid()*32;
+        create_dynamic_warp(mf, start_pc, warp_id);
+      }
+    }
+  }
+}
+
+void shader_core_ctx::create_dynamic_warp(mem_fetch* mf, unsigned start_pc, unsigned warp_id){
+  keep_original_mf.push_back(mf);
+  map_warps_id_position[warp_id] = m_dynamic_warp.size();
+  map_warps_position_id[m_dynamic_warp.size()] = warp_id;
+  simt_core_cluster** cluster = m_gpu->get_cluster();
+  unsigned chiplet_mf = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+  if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+    map_warps_mask[warp_id] = active_mask_t() | cluster[mf->get_tpc()]->m_core[0]->get_warp(mf->get_wid())->remote_masks[chiplet_mf];
+  }else{
+    map_warps_mask[warp_id] = active_mask_t();
+    for(unsigned i = 0; i < mf->number_of_threads; i++){
+      map_warps_mask[warp_id].set(i,1);
+    }
+  }
+  m_dynamic_warp.push_back(new shd_warp_t(this, m_config->warp_size));
+  dynamic_working++;
+  /*printf("INICIO warp_origen:%d; cluster_origen:%d; chiplet_origen:%d; sub_partition_mem:%d;\
+  id_warp_remote:%d; cluster_remoto:%d; chiplet_remoto:%d;tamaño_lista:%lu; ciclos:%llu; dirección: %llu; ", mf->get_wid(), mf->get_tpc(), mf->get_tpc() % m_config->n_chiplet, mf->get_sub_partition_id(), 
+          warp_id, m_sid, m_sid % m_config->n_chiplet, m_dynamic_warp.size(), m_gpu->gpu_tot_sim_cycle+m_gpu->gpu_sim_cycle, mf->get_addr());
+  std::cout << map_warps_mask[warp_id] << " " << mf->get_access_warp_mask() << " " << mf->get_request_uid() << std::endl;
+  */m_dynamic_warp.back()->init(start_pc, mf->get_ctaid(), 
+                          warp_id, 
+                          map_warps_mask[warp_id], warp_id, m_kernel->get_streamID());
+  m_dynamic_simt_stack.push_back(new simt_stack(warp_id, m_warp_size, m_gpu));
+  m_dynamic_simt_stack.back()->launch(start_pc, map_warps_mask[warp_id]); 
+  m_scoreboard->addRegisterDynamic(warp_id);
+  ptx_thread_info ** extern_threads = cluster[mf->get_tpc()]->m_core[0]->m_thread;
+  if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+    for(unsigned t = 0; t < m_warp_size; t++){
+      m_thread_dynamic.push_back(extern_threads[(m_warp_size * mf->get_wid() + t)]);
+      m_threadStateDynamic[warp_id+t] = new thread_ctx_t();
+      if (map_warps_mask[warp_id].test(t)){
+        m_thread_dynamic.back()->set_npc(start_pc);
+        m_thread_dynamic.back()->update_pc();
+        m_threadStateDynamic[warp_id+t]->m_active = true;
+      }else{
+        m_threadStateDynamic[warp_id+t]->m_active = false;
+      }
+      m_threadStateDynamic[warp_id+t]->m_cta_id = mf->get_ctaid();
+    }
+  }else{
+    unsigned j = 0;
+    for(auto request : mf->requests){
+      active_mask_t mask = request->get_access_warp_mask();
+      for(unsigned i = 0; i < mask.size(); i++){
+        if(mask.test(i)){
+          m_thread_dynamic.push_back(extern_threads[(m_warp_size * request->get_wid() + i)]);
+          m_threadStateDynamic[warp_id+j] = new thread_ctx_t();
+          if (map_warps_mask[warp_id].test(j)){
+            m_thread_dynamic.back()->set_npc(start_pc);
+            m_thread_dynamic.back()->update_pc();
+            m_threadStateDynamic[warp_id+j]->m_active = true;
+          }else{
+            m_threadStateDynamic[warp_id+j]->m_active = false;
+          }
+          m_threadStateDynamic[warp_id+j]->m_cta_id = request->get_ctaid();
+          j++;
+        }
+      }
+    }
+    for(;j<m_warp_size; j++){
+      m_threadStateDynamic[warp_id+j] = new thread_ctx_t();
+      m_threadStateDynamic[warp_id+j]->m_active = false;
+      m_thread_dynamic.push_back(NULL);
+    }
+  }
+  
+  m_next_dynamic_warp_id++;
+  m_dynamic_warp[m_dynamic_warp.size()-1]->can_fetch_dynamic = true;
+  std::vector<shd_warp_t*>::const_iterator it1 = m_dynamic_supervised_warps.begin();
+  size_t position = std::distance(it1, m_last_dynamic_supervised_issued);
+  add_supervised_dynamic_warp_id(m_dynamic_warp[m_dynamic_warp.size()-1]);
+  m_last_dynamic_supervised_issued = m_dynamic_supervised_warps.begin();
+  std::advance(m_last_dynamic_supervised_issued, position);
+}
+
 
 void sst_simt_core_cluster::icnt_cycle_SST() {
   if (!m_response_fifo.empty()) {
@@ -4879,6 +5367,35 @@ void simt_core_cluster::get_L1T_sub_stats(struct cache_sub_stats &css) const {
     total_css += temp_css;
   }
   css = total_css;
+}
+
+void exec_shader_core_ctx::checkExecutionDynamicStatusAndUpdate(warp_inst_t &inst,
+                                                         unsigned t,
+                                                         unsigned tid) {
+  if (inst.isatomic()) m_dynamic_warp[map_warps_id_position[inst.warp_id()]]->inc_n_atomic();
+  if (inst.space.is_local() && (inst.is_load() || inst.is_store())) {
+    new_addr_type localaddrs[MAX_ACCESSES_PER_INSN_PER_THREAD];
+    unsigned num_addrs;
+    num_addrs = translate_local_memaddr(
+        inst.get_addr(t), tid,
+        m_config->n_simt_clusters * m_config->n_simt_cores_per_cluster,
+        inst.data_size, (new_addr_type *)localaddrs);
+    inst.set_addr(t, (new_addr_type *)localaddrs, num_addrs);
+  }
+  if (ptx_thread_done_dynamic(tid) || inst.pc > m_gpu->get_config().get_end_remote()) {
+    m_dynamic_warp[map_warps_id_position[inst.warp_id()]]->set_completed(t);
+    m_dynamic_warp[map_warps_id_position[inst.warp_id()]]->ibuffer_flush();
+  }
+
+  // PC-Histogram Update
+  unsigned warp_id = inst.warp_id();
+  unsigned pc = inst.pc;
+  for (unsigned t = 0; t < m_config->warp_size; t++) {
+    if (inst.active(t)) {
+      int tid = warp_id * m_config->warp_size + t;
+      cflog_update_thread_pc(m_sid, tid, pc);
+    }
+  }
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

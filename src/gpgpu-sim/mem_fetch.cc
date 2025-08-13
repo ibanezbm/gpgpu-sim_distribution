@@ -36,8 +36,8 @@ unsigned mem_fetch::sm_next_mf_request_uid = 1;
 
 mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
                      unsigned long long streamID, unsigned ctrl_size,
-                     unsigned wid, unsigned sid, unsigned tpc,
-                     const memory_config *config, unsigned long long cycle,
+                     unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet,
+                     memory_config *config, unsigned long long cycle,
                      mem_fetch *m_original_mf, mem_fetch *m_original_wr_mf)
     : m_access(access)
 
@@ -58,7 +58,7 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   if (!config->is_SST_mode()) {
     // In SST memory model, the SST memory hierarchy is
     // responsible to generate the correct address mapping
-    config->m_address_mapping.addrdec_tlx(access.get_addr(), &m_raw_addr);
+    config->m_address_mapping.addrdec_tlx(access.get_addr(), &m_raw_addr, m_original_mf->get_tlx_addr().chip);
     m_partition_addr =
         config->m_address_mapping.partition_address(access.get_addr());
   }

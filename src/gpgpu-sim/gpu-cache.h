@@ -38,6 +38,8 @@
 #include "../tr1_hash_map.h"
 #include "gpu-misc.h"
 #include "mem_fetch.h"
+#include <map>
+#include <vector>
 
 #include <iostream>
 #include "addrdec.h"
@@ -605,6 +607,16 @@ class cache_config {
       default:
         exit_parse_error();
     }
+    switch (rp) {
+      case 'L':
+        m_replacement_policy = LRU;
+        break;
+      case 'F':
+        m_replacement_policy = FIFO;
+        break;
+      default:
+        exit_parse_error();
+    }
     switch (wp) {
       case 'R':
         m_write_policy = READ_ONLY;
@@ -1035,6 +1047,8 @@ class mshr_table {
 
   /// Checks if there is a pending request to the lower memory level already
   bool probe(new_addr_type block_addr) const;
+  //Remove entry in table
+  void remove(new_addr_type block_addr);
   /// Checks if there is space for tracking a new memory access
   bool full(new_addr_type block_addr) const;
   /// Add or merge this access
@@ -1058,11 +1072,13 @@ class mshr_table {
            "Change of MSHR parameters between kernels is not allowed");
   }
 
- private:
+ public:
   // finite sized, fully associative table, with a finite maximum number of
   // merged requests
   const unsigned m_num_entries;
   const unsigned m_max_merged;
+  unsigned current_messages_waiting = 0;
+  unsigned long long removes = 0;
 
   struct mshr_entry {
     std::list<mem_fetch *> m_list;
@@ -1286,9 +1302,9 @@ class baseline_cache : public cache_t {
       : m_config(config),
         m_tag_array(new tag_array(config, core_id, type_id)),
         m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
-        m_bandwidth_management(config),
         m_level(level),
-        m_gpu(gpu) {
+        m_gpu(gpu),
+        m_bandwidth_management(config) {
     init(name, config, memport, status);
   }
 
@@ -1388,14 +1404,19 @@ class baseline_cache : public cache_t {
     init(name, config, memport, status);
   }
 
- protected:
+ public:
   std::string m_name;
   cache_config &m_config;
   tag_array *m_tag_array;
   mshr_table m_mshrs;
   std::list<mem_fetch *> m_miss_queue;
+  std::list<mem_fetch *> m_miss_remote_queue;
+  std::list<mem_fetch *> m_remote_warp_queue;
   enum mem_fetch_status m_miss_queue_status;
   mem_fetch_interface *m_memport;
+  unsigned long long mshr_access = 0;
+  unsigned long long mshr_hit = 0;
+  unsigned long long mshr_add = 0;
   cache_gpu_level m_level;
   gpgpu_sim *m_gpu;
 
@@ -1703,24 +1724,31 @@ class l1_cache : public data_cache {
  public:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
-           enum mem_fetch_status status, class gpgpu_sim *gpu,
-           enum cache_gpu_level level)
-      : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level) {}
+           enum mem_fetch_status status, class shader_core_ctx* shader, 
+           class ldst_unit* ldst_unit, class gpgpu_sim *gpu, 
+           enum cache_gpu_level level);
 
-  virtual ~l1_cache() {}
+  shader_core_ctx* m_core;
+  ldst_unit* m_ldst_unit;
+  std::set<unsigned> send_warp;
+  unsigned* bussy_chiplets;
+  unsigned max_warps_remote_per_chiplet;
+  virtual ~l1_cache() { delete[] bussy_chiplets;}
+  void cycle();
+  bool normal_mode();
+  bool join_mode();
+  bool mshr_threads(mem_fetch* mf,bool &miss);
+  void check_remote(mem_fetch* mf);
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+                                           
+  std::map<std::tuple<unsigned, unsigned>, std::list<mem_fetch*>> map_remote;
+  std::map<unsigned, std::vector<mem_fetch*>> requests_waiting;
+  unsigned *total_threads;
+  unsigned long long *last_message;
 
- protected:
-  l1_cache(const char *name, cache_config &config, int core_id, int type_id,
-           mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
-           enum mem_fetch_status status, tag_array *new_tag_array,
-           class gpgpu_sim *gpu)
-      : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   new_tag_array, L1_WR_ALLOC_R, L1_WRBK_ACC, gpu) {}
 };
 
 /// Models second level shared cache with global write-back
@@ -1735,6 +1763,8 @@ class l2_cache : public data_cache {
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {}
 
   virtual ~l2_cache() {}
+
+  void cycle();
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,

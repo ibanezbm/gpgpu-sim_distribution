@@ -37,7 +37,9 @@ enum mf_type {
   READ_REQUEST = 0,
   WRITE_REQUEST,
   READ_REPLY,  // send to shader
-  WRITE_ACK
+  WRITE_ACK,
+  TO_SM,
+  FINISH_REMOTE
 };
 
 #define MF_TUP_BEGIN(X) enum X {
@@ -53,11 +55,18 @@ enum mf_type {
 class memory_config;
 class mem_fetch {
  public:
+  mem_fetch(unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet, int ctaid, mf_type type,
+            active_mask_t mask, addrdec_t raw_addr, unsigned ctr_size, std::vector<mem_fetch *> req);
   mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
-            unsigned long long streamID, unsigned ctrl_size, unsigned wid,
-            unsigned sid, unsigned tpc, const memory_config *config,
-            unsigned long long cycle, mem_fetch *original_mf = NULL,
+            unsigned long long streamID, unsigned ctrl_size, unsigned wid, 
+            unsigned sid, unsigned tpc, unsigned chiplet, memory_config *config, 
+            unsigned long long cycle, mem_fetch *original_mf = NULL, 
             mem_fetch *original_wr_mf = NULL);
+  
+  mem_fetch(unsigned ctrl_size, unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet,
+            memory_config *config, unsigned long long cycle,
+            mem_fetch *original_mf = NULL, mem_fetch *original_wr_mf = NULL);
+
   ~mem_fetch();
 
   void set_status(enum mem_fetch_status status, unsigned long long cycle);
@@ -81,6 +90,7 @@ class mem_fetch {
   void set_partition(unsigned sub_partition_id) {
     m_raw_addr.sub_partition = sub_partition_id;
   }
+  void set_type(mf_type type){ m_type = type; }
   unsigned get_data_size() const { return m_data_size; }
   void set_data_size(unsigned size) { m_data_size = size; }
   unsigned get_ctrl_size() const { return m_ctrl_size; }
@@ -88,6 +98,7 @@ class mem_fetch {
   bool is_write() { return m_access.is_write(); }
   void set_addr(new_addr_type addr) { m_access.set_addr(addr); }
   new_addr_type get_addr() const { return m_access.get_addr(); }
+  int get_ctaid(){return m_access.get_ctaid();}
   unsigned get_access_size() const { return m_access.get_size(); }
   new_addr_type get_partition_addr() const { return m_partition_addr; }
   unsigned get_sub_partition_id() const { return m_raw_addr.sub_partition; }
@@ -96,16 +107,19 @@ class mem_fetch {
   unsigned get_sid() const { return m_sid; }
   unsigned get_tpc() const { return m_tpc; }
   unsigned get_wid() const { return m_wid; }
+  unsigned get_chiplet() const {return m_chiplet;}
   bool istexture() const;
   bool isconst() const;
   enum mf_type get_type() const { return m_type; }
   bool isatomic() const;
-
+  void set_priority(unsigned prio){priority = prio;}
+  unsigned get_priority() const {return priority;};
   void set_return_timestamp(unsigned t) { m_timestamp2 = t; }
   void set_icnt_receive_time(unsigned t) { m_icnt_receive_time = t; }
   unsigned get_timestamp() const { return m_timestamp; }
   unsigned get_return_timestamp() const { return m_timestamp2; }
   unsigned get_icnt_receive_time() const { return m_icnt_receive_time; }
+  const mem_access_t get_access(){return m_access;}
   unsigned long long get_streamID() const { return m_streamID; }
 
   enum mem_access_type get_access_type() const { return m_access.get_type(); }
@@ -123,16 +137,23 @@ class mem_fetch {
   const warp_inst_t &get_inst() { return m_inst; }
   enum mem_fetch_status get_status() const { return m_status; }
 
-  const memory_config *get_mem_config() { return m_mem_config; }
+  memory_config *get_mem_config() { return m_mem_config; }
 
   unsigned get_num_flits(bool simt_to_mem);
 
   mem_fetch *get_original_mf() { return original_mf; }
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
+  int m_ctaid;
+  void set_active_warp_mask(active_mask_t mask){active_dynamic_warp_mask = mask;}
+  active_mask_t get_active_dynamic_warp_mask(){return active_dynamic_warp_mask;}
+  bool remote = false;
+  bool repeted = false;
+  unsigned m_chiplet;
 
  private:
   // request source information
   unsigned m_request_uid;
+  unsigned priority;
   unsigned m_sid;
   unsigned m_tpc;
   unsigned m_wid;
@@ -150,7 +171,7 @@ class mem_fetch {
   new_addr_type
       m_partition_addr;  // linear physical address *within* dram partition
                          // (partition bank select bits squeezed out)
-  addrdec_t m_raw_addr;  // raw physical address (i.e., decoded DRAM
+  //addrdec_t m_raw_addr;  // raw physical address (i.e., decoded DRAM
                          // chip-row-bank-column address)
   enum mf_type m_type;
 
@@ -169,15 +190,24 @@ class mem_fetch {
 
   static unsigned sm_next_mf_request_uid;
 
-  const memory_config *m_mem_config;
+  memory_config *m_mem_config;
   unsigned icnt_flit_size;
-
+  active_mask_t active_dynamic_warp_mask;
   mem_fetch
       *original_mf;  // this pointer is set up when a request is divided into
                      // sector requests at L2 cache (if the req size > L2 sector
                      // size), so the pointer refers to the original request
   mem_fetch *original_wr_mf;  // this pointer refers to the original write req,
                               // when fetch-on-write policy is used
+  public:
+  addrdec_t m_raw_addr;  // raw physical address (i.e., decoded DRAM
+    unsigned chiptlet_destino = -1;
+    unsigned long long m_status_L2_to_RAM;
+    unsigned long long m_status_RAM_to_L2;
+    unsigned long long m_status_L2_to_ICNT;
+    bool checked = false;
+    std::vector<mem_fetch*> requests;
+    unsigned number_of_threads;
 };
 
 #endif

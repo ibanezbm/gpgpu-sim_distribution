@@ -35,14 +35,14 @@
 #include "gpu-sim.h"
 #include "hashing.h"
 #include "stat-tool.h"
+#include "l2cache.h"
 
 // used to allocate memory that is large enough to adapt the changes in cache
 // size across kernels
 
 const char *cache_request_status_str(enum cache_request_status status) {
   static const char *static_cache_request_status_str[] = {
-      "HIT",         "HIT_RESERVED", "MISS", "RESERVATION_FAIL",
-      "SECTOR_MISS", "MSHR_HIT"};
+      "HIT", "HIT_RESERVED", "MISS", "RESERVATION_FAIL", "SECTOR_MISS"};
 
   assert(sizeof(static_cache_request_status_str) / sizeof(const char *) ==
          NUM_CACHE_REQUEST_STATUS);
@@ -295,20 +295,20 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       // reach the limit.
       if (!line->is_modified_line() ||
           dirty_line_percentage >= m_config.m_wr_percent) {
-        all_reserved = false;
-        if (line->is_invalid_line()) {
-          invalid_line = index;
-        } else {
-          // valid line : keep track of most appropriate replacement candidate
-          if (m_config.m_replacement_policy == LRU) {
-            if (line->get_last_access_time() < valid_timestamp) {
-              valid_timestamp = line->get_last_access_time();
-              valid_line = index;
-            }
-          } else if (m_config.m_replacement_policy == FIFO) {
-            if (line->get_alloc_time() < valid_timestamp) {
-              valid_timestamp = line->get_alloc_time();
-              valid_line = index;
+      all_reserved = false;
+      if (line->is_invalid_line()) {
+        invalid_line = index;
+      } else {
+        // valid line : keep track of most appropriate replacement candidate
+        if (m_config.m_replacement_policy == LRU) {
+          if (line->get_last_access_time() < valid_timestamp) {
+            valid_timestamp = line->get_last_access_time();
+            valid_line = index;
+          }
+        } else if (m_config.m_replacement_policy == FIFO) {
+          if (line->get_alloc_time() < valid_timestamp) {
+            valid_timestamp = line->get_alloc_time();
+            valid_line = index;
             }
           }
         }
@@ -328,6 +328,15 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   } else
     abort();  // if an unreserved block exists, it is either invalid or
               // replaceable
+
+  if (probe_mode && m_config.is_streaming()) {
+    line_table::const_iterator i =
+        pending_lines.find(m_config.block_addr(addr));
+    assert(mf);
+    if (!mf->is_write() && i != pending_lines.end()) {
+      if (i->second != mf->get_inst().get_uid()) return SECTOR_MISS;
+    }
+  }
 
   return MISS;
 }
@@ -361,7 +370,6 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       if (m_config.m_alloc_policy == ON_MISS) {
         if (m_lines[idx]->is_modified_line()) {
           wb = true;
-          // m_lines[idx]->set_byte_mask(mf);
           evicted.set_info(m_lines[idx]->m_block_addr,
                            m_lines[idx]->get_modified_size(),
                            m_lines[idx]->get_dirty_byte_mask(),
@@ -526,7 +534,7 @@ bool was_writeback_sent(const std::list<cache_event> &events,
        e != events.end(); e++) {
     if ((*e).m_cache_event_type == WRITE_BACK_REQUEST_SENT) {
       wb_event = *e;
-      return true;
+    return true;
     }
   }
   return false;
@@ -554,6 +562,17 @@ bool was_writeallocate_sent(const std::list<cache_event> &events) {
 bool mshr_table::probe(new_addr_type block_addr) const {
   table::const_iterator a = m_data.find(block_addr);
   return a != m_data.end();
+}
+
+//Remove entry in table
+void mshr_table::remove(new_addr_type block_addr){
+  m_data[block_addr].m_list.pop_back();
+  if (m_data[block_addr].m_list.empty()) {
+    // release entry
+    m_data.erase(block_addr);
+  }
+  removes++;
+  current_messages_waiting--;
 }
 
 /// Checks if there is space for tracking a new memory access
@@ -613,6 +632,8 @@ mem_fetch *mshr_table::next_access() {
     m_data.erase(block_addr);
     m_current_response.pop_front();
   }
+  removes++;
+  current_messages_waiting --;
   return result;
 }
 
@@ -807,8 +828,8 @@ cache_stats cache_stats::operator+(const cache_stats &cs) {
                     std::vector<std::vector<unsigned long long>>>(
               streamID, cs.m_stats.at(streamID)));
     } else {
-      for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-        for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
+  for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
+    for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
           ret.m_stats.at(streamID)[type][status] +=
               cs(type, status, false, streamID);
         }
@@ -827,7 +848,7 @@ cache_stats cache_stats::operator+(const cache_stats &cs) {
         for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
           ret.m_stats_pw.at(streamID)[type][status] +=
               cs(type, status, false, streamID);
-        }
+    }
       }
     }
   }
@@ -841,8 +862,8 @@ cache_stats cache_stats::operator+(const cache_stats &cs) {
               streamID, cs.m_fail_stats.at(streamID)));
     } else {
       for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-        for (unsigned status = 0; status < NUM_CACHE_RESERVATION_FAIL_STATUS;
-             ++status) {
+    for (unsigned status = 0; status < NUM_CACHE_RESERVATION_FAIL_STATUS;
+         ++status) {
           ret.m_fail_stats.at(streamID)[type][status] +=
               cs(type, status, true, streamID);
         }
@@ -869,11 +890,11 @@ cache_stats &cache_stats::operator+=(const cache_stats &cs) {
                                std::vector<std::vector<unsigned long long>>>(
           streamID, cs.m_stats.at(streamID)));
     } else {
-      for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-        for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
+  for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
+    for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
           m_stats.at(streamID)[type][status] +=
               cs(type, status, false, streamID);
-        }
+    }
       }
     }
   }
@@ -885,10 +906,10 @@ cache_stats &cache_stats::operator+=(const cache_stats &cs) {
           streamID, cs.m_stats_pw.at(streamID)));
     } else {
       for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-        for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
+    for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
           m_stats_pw.at(streamID)[type][status] +=
               cs(type, status, false, streamID);
-        }
+    }
       }
     }
   }
@@ -902,8 +923,8 @@ cache_stats &cache_stats::operator+=(const cache_stats &cs) {
               streamID, cs.m_fail_stats.at(streamID)));
     } else {
       for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-        for (unsigned status = 0; status < NUM_CACHE_RESERVATION_FAIL_STATUS;
-             ++status) {
+    for (unsigned status = 0; status < NUM_CACHE_RESERVATION_FAIL_STATUS;
+         ++status) {
           m_fail_stats.at(streamID)[type][status] +=
               cs(type, status, true, streamID);
         }
@@ -932,27 +953,27 @@ void cache_stats::print_stats(FILE *fout, unsigned long long streamID,
     unsigned long long streamid = iter->first;
     // when streamID is specified, skip stats for all other streams, otherwise,
     // print stats from all streams
-    if ((streamID != -1) && (streamid != streamID)) continue;
+    if ((streamid != streamID)) continue;
     total_access.clear();
-    total_access.resize(NUM_MEM_ACCESS_TYPE, 0);
+  total_access.resize(NUM_MEM_ACCESS_TYPE, 0);
     for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-      for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
-        fprintf(fout, "\t%s[%s][%s] = %llu\n", m_cache_name.c_str(),
-                mem_access_type_str((enum mem_access_type)type),
-                cache_request_status_str((enum cache_request_status)status),
+    for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
+      fprintf(fout, "\t%s[%s][%s] = %llu\n", m_cache_name.c_str(),
+              mem_access_type_str((enum mem_access_type)type),
+              cache_request_status_str((enum cache_request_status)status),
                 m_stats.at(streamid)[type][status]);
 
         if (status != RESERVATION_FAIL && status != MSHR_HIT)
           // MSHR_HIT is a special type of SECTOR_MISS
           // so its already included in the SECTOR_MISS
           total_access[type] += m_stats.at(streamid)[type][status];
-      }
     }
-    for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-      if (total_access[type] > 0)
-        fprintf(fout, "\t%s[%s][%s] = %u\n", m_cache_name.c_str(),
-                mem_access_type_str((enum mem_access_type)type), "TOTAL_ACCESS",
-                total_access[type]);
+  }
+  for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
+    if (total_access[type] > 0)
+      fprintf(fout, "\t%s[%s][%s] = %u\n", m_cache_name.c_str(),
+              mem_access_type_str((enum mem_access_type)type), "TOTAL_ACCESS",
+              total_access[type]);
     }
   }
 }
@@ -964,15 +985,15 @@ void cache_stats::print_fail_stats(FILE *fout, unsigned long long streamID,
     unsigned long long streamid = iter->first;
     // when streamID is specified, skip stats for all other streams, otherwise,
     // print stats from all streams
-    if ((streamID != -1) && (streamid != streamID)) continue;
-    for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
+    if ((streamid != streamID)) continue;
+  for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
       for (unsigned fail = 0; fail < NUM_CACHE_RESERVATION_FAIL_STATUS;
            ++fail) {
         if (m_fail_stats.at(streamid)[type][fail] > 0) {
           fprintf(
               fout, "\t%s[%s][%s] = %llu\n", m_cache_name.c_str(),
-              mem_access_type_str((enum mem_access_type)type),
-              cache_fail_status_str((enum cache_reservation_fail_reason)fail),
+                mem_access_type_str((enum mem_access_type)type),
+                cache_fail_status_str((enum cache_reservation_fail_reason)fail),
               m_fail_stats.at(streamid)[type][fail]);
         }
       }
@@ -1007,8 +1028,8 @@ unsigned long long cache_stats::get_stats(
   unsigned long long total = 0;
   for (auto iter = m_stats.begin(); iter != m_stats.end(); ++iter) {
     unsigned long long streamID = iter->first;
-    for (unsigned type = 0; type < num_access_type; ++type) {
-      for (unsigned status = 0; status < num_access_status; ++status) {
+  for (unsigned type = 0; type < num_access_type; ++type) {
+    for (unsigned status = 0; status < num_access_status; ++status) {
         if (!check_valid((int)access_type[type], (int)access_status[status]))
           assert(0 && "Unknown cache access type or access outcome");
         total += m_stats.at(streamID)[access_type[type]][access_status[status]];
@@ -1027,13 +1048,13 @@ void cache_stats::get_sub_stats(struct cache_sub_stats &css) const {
 
   for (auto iter = m_stats.begin(); iter != m_stats.end(); ++iter) {
     unsigned long long streamID = iter->first;
-    for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-      for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
-        if (status == HIT || status == MISS || status == SECTOR_MISS ||
-            status == HIT_RESERVED)
+  for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
+    for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
+      if (status == HIT || status == MISS || status == SECTOR_MISS ||
+          status == HIT_RESERVED)
           t_css.accesses += m_stats.at(streamID)[type][status];
 
-        if (status == MISS || status == SECTOR_MISS)
+      if (status == MISS || status == SECTOR_MISS)
           t_css.misses += m_stats.at(streamID)[type][status];
 
         if (status == HIT_RESERVED)
@@ -1061,44 +1082,44 @@ void cache_stats::get_sub_stats_pw(struct cache_sub_stats_pw &css) const {
 
   for (auto iter = m_stats_pw.begin(); iter != m_stats_pw.end(); ++iter) {
     unsigned long long streamID = iter->first;
-    for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
-      for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
-        if (status == HIT || status == MISS || status == SECTOR_MISS ||
-            status == HIT_RESERVED)
+  for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type) {
+    for (unsigned status = 0; status < NUM_CACHE_REQUEST_STATUS; ++status) {
+      if (status == HIT || status == MISS || status == SECTOR_MISS ||
+          status == HIT_RESERVED)
           t_css.accesses += m_stats_pw.at(streamID)[type][status];
 
-        if (status == HIT) {
+      if (status == HIT) {
           if (type == GLOBAL_ACC_R || type == CONST_ACC_R ||
               type == INST_ACC_R) {
             t_css.read_hits += m_stats_pw.at(streamID)[type][status];
-          } else if (type == GLOBAL_ACC_W) {
+        } else if (type == GLOBAL_ACC_W) {
             t_css.write_hits += m_stats_pw.at(streamID)[type][status];
-          }
         }
+      }
 
-        if (status == MISS || status == SECTOR_MISS) {
+      if (status == MISS || status == SECTOR_MISS) {
           if (type == GLOBAL_ACC_R || type == CONST_ACC_R ||
               type == INST_ACC_R) {
             t_css.read_misses += m_stats_pw.at(streamID)[type][status];
-          } else if (type == GLOBAL_ACC_W) {
+        } else if (type == GLOBAL_ACC_W) {
             t_css.write_misses += m_stats_pw.at(streamID)[type][status];
-          }
         }
+      }
 
-        if (status == HIT_RESERVED) {
+      if (status == HIT_RESERVED) {
           if (type == GLOBAL_ACC_R || type == CONST_ACC_R ||
               type == INST_ACC_R) {
             t_css.read_pending_hits += m_stats_pw.at(streamID)[type][status];
-          } else if (type == GLOBAL_ACC_W) {
+        } else if (type == GLOBAL_ACC_W) {
             t_css.write_pending_hits += m_stats_pw.at(streamID)[type][status];
-          }
         }
+      }
 
-        if (status == RESERVATION_FAIL) {
+      if (status == RESERVATION_FAIL) {
           if (type == GLOBAL_ACC_R || type == CONST_ACC_R ||
               type == INST_ACC_R) {
             t_css.read_res_fails += m_stats_pw.at(streamID)[type][status];
-          } else if (type == GLOBAL_ACC_W) {
+        } else if (type == GLOBAL_ACC_W) {
             t_css.write_res_fails += m_stats_pw.at(streamID)[type][status];
           }
         }
@@ -1215,7 +1236,7 @@ bool baseline_cache::bandwidth_management::fill_port_free() const {
 void baseline_cache::cycle() {
   if (!m_miss_queue.empty()) {
     mem_fetch *mf = m_miss_queue.front();
-    if (!m_memport->full(mf->size(), mf->get_is_write())) {
+    if (!m_memport->full(mf->size(), mf->get_is_write(), mf)) {
       m_miss_queue.pop_front();
       m_memport->push(mf);
     }
@@ -1360,6 +1381,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
                                        bool read_only, bool wa) {
   new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
   bool mshr_hit = m_mshrs.probe(mshr_addr);
+  this->mshr_access++;
   bool mshr_avail = !m_mshrs.full(mshr_addr);
   if (mshr_hit && mshr_avail) {
     if (read_only)
@@ -1369,6 +1391,8 @@ void baseline_cache::send_read_request(new_addr_type addr,
 
     m_mshrs.add(mshr_addr, mf);
     m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
+    m_mshrs.current_messages_waiting++;
+    this->mshr_hit++;
     do_miss = true;
 
   } else if (!mshr_hit && mshr_avail &&
@@ -1379,6 +1403,11 @@ void baseline_cache::send_read_request(new_addr_type addr,
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
     m_mshrs.add(mshr_addr, mf);
+    m_mshrs.current_messages_waiting++;
+    this->mshr_add++;
+    if (m_config.is_streaming() && m_config.m_cache_type == SECTOR) {
+      m_tag_array->add_pending_line(mf);
+    }
     m_extra_mf_fields[mf] = extra_mf_fields(
         mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
     mf->set_data_size(m_config.get_atom_sz());
@@ -1556,11 +1585,11 @@ enum cache_request_status data_cache::wr_miss_wa_naive(
       new mem_access_t(m_wr_alloc_type, mf->get_addr(), m_config.get_atom_sz(),
                        false,  // Now performing a read
                        mf->get_access_warp_mask(), mf->get_access_byte_mask(),
-                       mf->get_access_sector_mask(), m_gpu->gpgpu_ctx);
+                       mf->get_access_sector_mask(), mf->get_ctaid(),m_gpu->gpgpu_ctx);
 
   mem_fetch *n_mf = new mem_fetch(
       *ma, NULL, mf->get_streamID(), mf->get_ctrl_size(), mf->get_wid(),
-      mf->get_sid(), mf->get_tpc(), mf->get_mem_config(),
+      mf->get_sid(), mf->get_tpc(), mf->get_chiplet(), mf->get_mem_config(),
       m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
 
   bool do_miss = false;
@@ -1581,8 +1610,8 @@ enum cache_request_status data_cache::wr_miss_wa_naive(
              MISS);  // SECTOR_MISS and HIT_RESERVED should not send write back
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
-          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1, 
           NULL, mf->get_streamID());
       // the evicted block may have wrong chip id when advanced L2 hashing  is
       // used, so set the right chip address from the original mf
@@ -1635,8 +1664,8 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
       if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
         mem_fetch *wb = m_memfetch_creator->alloc(
             evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-            evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
-            true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+            evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+            true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
             NULL, mf->get_streamID());
         // the evicted block may have wrong chip id when advanced L2 hashing  is
         // used, so set the right chip address from the original mf
@@ -1686,11 +1715,11 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
         m_wr_alloc_type, mf->get_addr(), m_config.get_atom_sz(),
         false,  // Now performing a read
         mf->get_access_warp_mask(), mf->get_access_byte_mask(),
-        mf->get_access_sector_mask(), m_gpu->gpgpu_ctx);
+        mf->get_access_sector_mask(), mf->get_ctaid(),m_gpu->gpgpu_ctx);
 
     mem_fetch *n_mf = new mem_fetch(
         *ma, NULL, mf->get_streamID(), mf->get_ctrl_size(), mf->get_wid(),
-        mf->get_sid(), mf->get_tpc(), mf->get_mem_config(),
+        mf->get_sid(), mf->get_tpc(), mf->get_chiplet(), mf->get_mem_config(),
         m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, NULL, mf);
 
     new_addr_type block_addr = m_config.block_addr(addr);
@@ -1712,8 +1741,8 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
       if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
         mem_fetch *wb = m_memfetch_creator->alloc(
             evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-            evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
-            true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+            evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+            true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
             NULL, mf->get_streamID());
         // the evicted block may have wrong chip id when advanced L2 hashing  is
         // used, so set the right chip address from the original mf
@@ -1780,8 +1809,8 @@ enum cache_request_status data_cache::wr_miss_wa_lazy_fetch_on_read(
     if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
-          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
           NULL, mf->get_streamID());
       // the evicted block may have wrong chip id when advanced L2 hashing  is
       // used, so set the right chip address from the original mf
@@ -1864,8 +1893,8 @@ enum cache_request_status data_cache::rd_miss_base(
     if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
-          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
           NULL, mf->get_streamID());
       // the evicted block may have wrong chip id when advanced L2 hashing  is
       // used, so set the right chip address from the original mf
@@ -2065,7 +2094,7 @@ void tex_cache::cycle() {
   // TODO: Use different full() for sst_mem_interface?
   if (!m_request_fifo.empty()) {
     mem_fetch *mf = m_request_fifo.peek();
-    if (!m_memport->full(mf->get_ctrl_size(), false)) {
+    if (!m_memport->full(mf->get_ctrl_size(), false, mf)) {
       m_request_fifo.pop();
       m_memport->push(mf);
     }
@@ -2161,4 +2190,330 @@ void tex_cache::display_state(FILE *fp) const {
     f.m_request->print(fp, false);
   }
 }
+
+
+void l2_cache::cycle(){
+    if (!m_miss_queue.empty()) {
+      mem_fetch *mf = m_miss_queue.front();
+      if (!m_memport->full(mf->size(), mf->get_is_write(), mf)) {
+        m_miss_queue.pop_front();
+        dynamic_cast<L2interface*>(m_memport)->push(mf, this->m_gpu->gpu_sim_cycle+this->m_gpu->gpu_tot_sim_cycle);
+      }
+    }
+      bool data_port_busy = !m_bandwidth_management.data_port_free();
+      bool fill_port_busy = !m_bandwidth_management.fill_port_free();
+      m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
+      m_bandwidth_management.replenish_port_bandwidth();
+  }
+
+l1_cache::l1_cache(const char *name, cache_config &config, int core_id, int type_id,
+           mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
+           enum mem_fetch_status status, class shader_core_ctx* shader, 
+           class ldst_unit* ldst_unit, class gpgpu_sim *gpu, enum cache_gpu_level level): data_cache(name, config, core_id, type_id, memport, mfcreator, status,
+                   L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level){
+              m_core = shader; 
+              m_ldst_unit = ldst_unit;
+              bussy_chiplets = new unsigned[gpu->getShaderCoreConfig()->n_chiplet];
+              total_threads = new unsigned[gpu->getShaderCoreConfig()->n_chiplet];
+              last_message = new unsigned long long[gpu->getShaderCoreConfig()->n_chiplet];
+              for (unsigned i = 0; i < gpu->getShaderCoreConfig()->n_chiplet; i++){
+                bussy_chiplets[i] = 0;
+                total_threads[i] = 0;
+                last_message[i] = 0;
+              }
+              max_warps_remote_per_chiplet = gpu->m_config.get_remotes_per_shader();
+              //max_warps_remote_per_chiplet = gpu->getShaderCoreConfig()->n_simt_clusters / gpu->getShaderCoreConfig()->n_chiplet;
+           }
+
+bool l1_cache::normal_mode(){
+  bool send_remote = false;
+  for (auto& pair : map_remote) {
+    std::list<mem_fetch*>& values = pair.second;
+    //printf("warp:%d tpc:%d value:%d\n",std::get<0>(pair.first), m_core->get_sid(), m_core->m_mem_access_per_warp_mf[std::get<0>(pair.first)]);
+    if( !values.empty() && values.size() == m_core->m_mem_access_per_warp_mf[std::get<0>(pair.first)] && m_core->m_mem_access_per_warp_mf_count[std::get<0>(pair.first)] == 0){
+      //TODO: CHEKEAR TODOS LOS VALUES PARA SABER SI PODEMOS IR QUITANDO PETICIONES
+      mem_fetch* mf = values.front();
+      unsigned chiplet_mf = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+  //printf("AAAAA %lld %ld ", mf->get_addr(), m_mshrs.m_data[m_config.mshr_addr(mf->get_addr())].m_list.size());
+  //printf(" %d %d %d %d\n",m_core->m_mem_access_per_warp[pair.first] <= m_gpu->get_config().get_min_threads_remote_warp(),
+
+      if (!m_memport->full(mf->size(), mf->get_is_write(), mf)) {
+        if(m_core->m_mem_access_per_warp[pair.first] <= m_gpu->get_config().get_min_threads_remote_warp() 
+        || m_core->stall_load.size() + send_warp.size() > m_gpu->get_config().get_min_warps_stall_load() 
+        || m_mshrs.m_data[m_config.mshr_addr(mf->get_addr())].m_list.size() > 1
+        ){
+          //printf("MF NOT warp:%d tpc:%d pc:%d addr:%llu value:%d requ:%d cycle:%llu\n", mf->get_wid(), mf->get_tpc(), mf->get_pc(),mf->get_addr() , m_core->m_mem_access_per_warp_mf_count[mf->get_wid()],
+          //mf->get_request_uid() ,m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+          mf->remote = false;
+          send_remote = true;
+          m_memport->push(mf);
+          values.pop_front();
+          for(auto mfs : values){
+            mfs->remote = false;
+            m_miss_queue.push_front(mfs);
+          }
+          values.clear();
+          break;
+        }else if(bussy_chiplets[chiplet_mf] < max_warps_remote_per_chiplet){
+          //printf("MF YES warp:%d tpc:%d pc:%d addr:%llu value:%d cycle:%llu\n", mf->get_wid(), mf->get_tpc(), mf->get_pc(),mf->get_addr() ,m_core->m_mem_access_per_warp_mf_count[mf->get_wid()],
+          //m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+          bussy_chiplets[chiplet_mf]++;
+          send_warp.insert(mf->get_wid());
+          //printf("Remove1 warp:%d tpc:%d %llu ", mf->get_wid(), mf->get_tpc(), mf->get_addr());
+          
+          m_mshrs.remove(m_config.mshr_addr(mf->get_addr()));
+          m_ldst_unit->release_register(mf);
+          m_ldst_unit->change_masks(mf);
+          if(!mf->repeted){
+            m_core->n_warps_remote++;
+            m_memport->push(mf);
+            send_remote = true;
+            values.pop_front();
+          }else{
+            values.pop_front();
+            delete mf;
+          }
+          for(auto mfs : values){
+            //printf("Remove2 warp:%d tpc:%d %llu %llu", mfs->get_wid(), mfs->get_tpc(),mfs->get_addr(), m_config.mshr_addr(mfs->get_addr()));
+            m_mshrs.remove(m_config.mshr_addr(mfs->get_addr()));
+            m_ldst_unit->release_register(mfs);
+            m_ldst_unit->change_masks(mfs);
+            if(!mfs->repeted){
+              m_core->n_warps_remote++;
+              m_memport->push(mfs);
+              send_remote = true;
+            }else{
+              delete mfs;
+            }
+          }
+          values.clear();
+          break;
+        }
+      }
+      values.pop_front();
+      values.push_back(mf);
+    }      
+  }
+  return send_remote;
+}
+
+bool l1_cache::join_mode(){
+  bool send_remote = false;
+  for(unsigned i = 0; i < m_gpu->getShaderCoreConfig()->n_chiplet; i++){
+    unsigned min_threads = m_gpu->get_config().get_min_threads_remote_warp();
+    if(total_threads[i] > min_threads && bussy_chiplets[i] < max_warps_remote_per_chiplet){
+      if(requests_waiting[i][requests_waiting[i].size()-1]->get_access_warp_mask().count() > min_threads){
+        //last_message[i] = 0;
+        mem_fetch* mf = requests_waiting[i][requests_waiting[i].size()-1];
+        mf->repeted = false;
+        m_core->n_warps_remote++;
+        m_ldst_unit->release_register(mf);
+        m_ldst_unit->change_masks(mf);
+        bussy_chiplets[i]++;
+        send_warp.insert(mf->get_wid());
+        mf->number_of_threads = mf->get_access_warp_mask().count();
+        m_gpu->gpu_sim_insn -= mf->get_access_warp_mask().count();
+        total_threads[i] -= mf->number_of_threads;
+        mf->requests.push_back(mf);
+        if(!m_memport->full(mf->size(), mf->get_is_write(), mf)) {
+          send_remote = true;
+          m_memport->push(mf);
+        }else{
+          m_remote_warp_queue.push_back(mf);
+        }
+        requests_waiting[i].pop_back();
+        m_core->n_warps_remote_total++;
+        break;
+      } 
+      //last_message[i] = 0;
+      mem_fetch* mf = requests_waiting[i][0];
+      mf->repeted = false;
+      m_core->n_warps_remote++;
+      m_ldst_unit->release_register(mf);
+      m_ldst_unit->change_masks(mf);
+      bussy_chiplets[i]++;
+      send_warp.insert(mf->get_wid());
+      mf->number_of_threads = mf->get_access_warp_mask().count();
+      m_gpu->gpu_sim_insn -= mf->get_access_warp_mask().count();
+      unsigned j;
+      for(j = 1; j < requests_waiting[i].size()-1; j++){
+        send_warp.insert(requests_waiting[i][j]->get_wid());
+        m_ldst_unit->release_register(requests_waiting[i][j]);
+        m_ldst_unit->change_masks(requests_waiting[i][j]);
+        mf->number_of_threads += requests_waiting[i][j]->get_access_warp_mask().count();
+        m_gpu->gpu_sim_insn -= requests_waiting[i][j]->get_access_warp_mask().count();
+        mf->requests.push_back(requests_waiting[i][j]);
+      }
+      if(requests_waiting[i].size()!=1){
+        if(mf->number_of_threads + requests_waiting[i][j]->get_access_warp_mask().count() > 32){
+          requests_waiting[i][j]->remote = false;
+          m_miss_remote_queue.push_back(requests_waiting[i][j]);
+        }else{
+          send_warp.insert(requests_waiting[i][j]->get_wid());
+          m_ldst_unit->release_register(requests_waiting[i][j]);
+          m_ldst_unit->change_masks(requests_waiting[i][j]);
+          mf->number_of_threads += requests_waiting[i][j]->get_access_warp_mask().count();
+          m_gpu->gpu_sim_insn -= requests_waiting[i][j]->get_access_warp_mask().count();
+          mf->requests.push_back(requests_waiting[i][j]);
+        }
+      }
+      total_threads[i] = 0;
+      mf->requests.push_back(mf);
+      requests_waiting[i].clear();
+      if (!m_memport->full(mf->size(), mf->get_is_write(), mf)) {
+        send_remote = true;
+        m_memport->push(mf);
+      }else{
+        m_remote_warp_queue.push_back(mf);
+      }
+      m_core->n_warps_remote_total++;
+      break;
+    }
+  }
+
+  if(!send_remote){
+    for(unsigned i = 0; i < m_gpu->getShaderCoreConfig()->n_chiplet; i++){
+      if((m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle - last_message[i] > 10 || 
+          bussy_chiplets[i] >= max_warps_remote_per_chiplet) && 
+          requests_waiting[i].size()>0){
+        //last_message[i] = 0;
+        mem_fetch* mf = requests_waiting[i][0];
+        if(!m_memport->full(mf->size(), mf->get_is_write(), mf)){
+          mf->remote = false;
+          bool miss = false;
+          total_threads[i] -= mf->get_access_warp_mask().count();
+
+          if(mshr_threads(mf, miss)){
+            m_memport->push(mf);
+            send_remote = true;
+          }else{
+            if (!miss){
+              m_miss_remote_queue.push_back(mf);
+            }
+          }
+          for(unsigned j = 1; j < requests_waiting[i].size(); j++){
+            mf = requests_waiting[i][j];
+            total_threads[i] -= mf->get_access_warp_mask().count();
+            mf->remote = false;
+            m_miss_remote_queue.push_back(mf);
+          }
+          requests_waiting[i].clear();
+          break;
+        }
+      }
+    }
+  }
+  return send_remote;
+}
+
+void l1_cache::cycle(){
+  bool send_remote = false;
+  if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+    send_remote = normal_mode();
+  }else{
+    send_remote = join_mode();
+    if(!send_remote && !m_remote_warp_queue.empty()){
+      mem_fetch *mf = m_remote_warp_queue.front();
+      if(!m_memport->full(mf->size(), mf->get_is_write(), mf)){
+        m_memport->push(mf);
+        m_remote_warp_queue.pop_front();
+        send_remote = true;
+      }
+    }
+  }
+  if ((!m_miss_queue.empty() || !m_miss_remote_queue.empty()) && !send_remote) {
+    mem_fetch *mf;
+    bool remote = false;
+    if(m_miss_remote_queue.empty()){
+      mf = m_miss_queue.front();
+    }else{
+      remote = true;
+      mf = m_miss_remote_queue.front();
+    }
+    //printf("MF CHEK warp:%d tpc:%d pc:%d addr:%llu value:%d reque:%d cycle:%llu yes:%d\n", 
+    //mf->get_wid(), mf->get_tpc(), mf->get_pc(), mf->get_addr(), 
+    //m_core->m_mem_access_per_warp_mf_count[mf->get_wid()], mf->get_request_uid(),
+    //m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf->remote && !mf->checked);
+    if (!m_memport->full(mf->size(), mf->get_is_write(), mf)) {
+      if(remote){
+        bool miss = false;
+        if(mshr_threads(mf, miss)){
+          m_memport->push(mf);
+        }
+        if(miss){
+          m_miss_remote_queue.pop_front();
+        }
+      }else{
+        m_miss_queue.pop_front();
+        if(mf->remote && !mf->checked){
+          check_remote(mf);
+        }else{
+          m_memport->push(mf);
+        }
+      }
+    }
+  }
+  bool data_port_busy = !m_bandwidth_management.data_port_free();
+  bool fill_port_busy = !m_bandwidth_management.fill_port_free();
+  m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
+  m_bandwidth_management.replenish_port_bandwidth();
+}
+
+void l1_cache::check_remote(mem_fetch* mf){
+  //printf("MF MISS warp:%d tpc:%d pc:%d addr:%llu value:%d cycle:%llu\n", mf->get_wid(), mf->get_tpc(), mf->get_pc(),mf->get_addr() ,m_core->m_mem_access_per_warp_mf_count[mf->get_wid()],
+  //m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+  std::tuple<unsigned, unsigned> key(mf->get_wid(), mf->chiptlet_destino);
+  m_core->m_mem_access_per_warp_mf_count[mf->get_wid()] -= 1;
+  if(strcmp("normal", m_gpu->m_config.get_remote_mode())==0){
+    map_remote[key].push_back(mf);    
+  }else{
+    unsigned chiplet_mf = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+    total_threads[chiplet_mf] += mf->get_access_warp_mask().count();
+    requests_waiting[chiplet_mf].push_back(mf);
+    //if(last_message[chiplet_mf] == 0)
+    last_message[chiplet_mf] = m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle;
+  }
+}
+
+bool l1_cache::mshr_threads(mem_fetch* mf, bool &miss){
+  new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+  bool mshr_hit = m_mshrs.probe(mshr_addr);
+  bool mshr_avail = !m_mshrs.full(mshr_addr);
+  mshr_access++;
+  if (mshr_hit && mshr_avail) {
+    m_mshrs.add(mshr_addr, mf);
+    this->mshr_hit++;
+    m_mshrs.current_messages_waiting++;
+    miss = true;
+    return false;
+  } else if (!mshr_hit && mshr_avail 
+              //&& (m_miss_queue.size() < m_config.m_miss_queue_size)
+             ) {
+    m_mshrs.add(mshr_addr, mf);
+    m_mshrs.current_messages_waiting++;
+    //this->mshr_add++;
+    if (m_config.is_streaming() && m_config.m_cache_type == SECTOR) {
+      m_tag_array->add_pending_line(mf);
+    }
+    m_extra_mf_fields[mf] = extra_mf_fields(
+        mshr_addr, mf->get_addr(), -1, mf->get_data_size(), m_config);
+    mf->set_data_size(m_config.get_atom_sz());
+    mf->set_addr(mshr_addr);
+    miss = true;
+    return true;
+  } else if (mshr_hit && !mshr_avail){
+    m_stats.inc_stats_pw(mf->get_access_type(),
+                       MSHR_ENRTY_FAIL,
+                       mf->get_streamID());
+    return false;
+  }else if (!mshr_hit && !mshr_avail){
+    m_stats.inc_stats_pw(mf->get_access_type(),
+                       MSHR_ENRTY_FAIL,
+                       mf->get_streamID());
+    return false;
+  }else{
+    assert(0);
+  }
+}
 /******************************************************************************************************************************************/
+

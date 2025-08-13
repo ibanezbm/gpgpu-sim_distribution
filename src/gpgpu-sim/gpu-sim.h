@@ -43,6 +43,7 @@
 #include "addrdec.h"
 #include "gpu-cache.h"
 #include "shader.h"
+#include "ring_connection.h"
 
 // constants for statistics printouts
 #define GPU_RSTAT_SHD_INFO 0x1
@@ -218,7 +219,7 @@ class memory_config {
     gpgpu_L2_queue_config = NULL;
     gpgpu_ctx = ctx;
   }
-  void init() {
+  void init(unsigned n_chiplets) {
     assert(gpgpu_dram_timing_opt);
     if (strchr(gpgpu_dram_timing_opt, '=') == NULL) {
       // dram timing option in ordered variables (legacy)
@@ -304,7 +305,7 @@ class memory_config {
     fprintf(stdout, "Total number of memory sub partition = %u\n",
             m_n_mem_sub_partition);
 
-    m_address_mapping.init(m_n_mem, m_n_sub_partition_per_memory_channel);
+    m_address_mapping.init(m_n_mem, m_n_sub_partition_per_memory_channel, n_chiplets);
     m_L2_config.init(&m_address_mapping);
 
     m_valid = true;
@@ -422,7 +423,7 @@ class gpgpu_sim_config : public power_config,
            &gpu_runtime_stat_flag);
     m_shader_config.init();
     ptx_set_tex_cache_linesize(m_shader_config.m_L1T_config.get_line_sz());
-    m_memory_config.init();
+    m_memory_config.init(m_shader_config.n_chiplet);
     init_clock_domains();
     power_config::init();
     Trace::init();
@@ -466,6 +467,15 @@ class gpgpu_sim_config : public power_config,
   }
 
   bool flush_l1() const { return gpgpu_flush_l1_cache; }
+  unsigned get_remote_pc() const {return remote_pc;}
+  std::string get_kernel_remote() const {return kernel_remote;}
+  unsigned get_end_remote() const {return end_remote;}
+  unsigned get_new_scheduler() const {return new_scheduler;}
+  unsigned get_remotes_per_shader() const {return remotes_per_shader;}
+  memory_config* get_mem_config() {return &m_memory_config;}
+  unsigned get_min_threads_remote_warp() const {return min_threads_remote_warp;}
+  unsigned get_min_warps_stall_load() const {return min_warps_stall_load;}
+  const char* get_remote_mode() const {return remote_mode;}
 
  private:
   void init_clock_domains(void);
@@ -488,6 +498,14 @@ class gpgpu_sim_config : public power_config,
   // GPGPU-Sim timing model options
   unsigned long long gpu_max_cycle_opt;
   unsigned long long gpu_max_insn_opt;
+  unsigned remote_pc;
+  char* kernel_remote;
+  unsigned end_remote;
+  unsigned min_threads_remote_warp;
+  unsigned min_warps_stall_load;
+  const char * remote_mode = "normal";
+  unsigned new_scheduler;
+  unsigned remotes_per_shader;
   unsigned gpu_max_cta_opt;
   unsigned gpu_max_completed_cta_opt;
   char *gpgpu_runtime_stat;
@@ -575,7 +593,7 @@ class watchpoint_event {
 
 class gpgpu_sim : public gpgpu_t {
  public:
-  gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx);
+  gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx);
 
   void set_prop(struct cudaDeviceProp *prop);
 
@@ -584,7 +602,7 @@ class gpgpu_sim : public gpgpu_t {
   unsigned finished_kernel();
   void set_kernel_done(kernel_info_t *kernel);
   void stop_all_running_kernels();
-
+  simt_core_cluster **get_cluster(){return m_cluster;}
   void init();
   void cycle();
   bool active();
@@ -626,7 +644,7 @@ class gpgpu_sim : public gpgpu_t {
   PowerscalingCoefficients *get_scaling_coeffs();
   void decrement_kernel_latency();
 
-  const gpgpu_sim_config &get_config() const { return m_config; }
+  gpgpu_sim_config &get_config() const { return m_config; }
   void gpu_print_stat(unsigned long long streamID);
   void dump_pipeline(int mask, int s, int m) const;
 
@@ -670,6 +688,14 @@ class gpgpu_sim : public gpgpu_t {
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
 
+  //Ring
+  ring* Ring;
+  unsigned* cluster_max_remotes;
+  unsigned* cluster_dynamic_index;
+  std::vector<mem_fetch *> find_original_mf;
+  std::vector<int> position_to_index_dynamic;
+  std::map<std::string, long long unsigned> traffic_information;
+
  protected:
   // clocks
   void reinit_clock_domains(void);
@@ -685,7 +711,7 @@ class gpgpu_sim : public gpgpu_t {
 
   void gpgpu_debug();
 
- protected:
+ public:
   ///// data /////
   class simt_core_cluster **m_cluster;
   class memory_partition_unit **m_memory_partition_unit;
@@ -714,11 +740,11 @@ class gpgpu_sim : public gpgpu_t {
   bool gpu_deadlock;
 
   //// configuration parameters ////
-  const gpgpu_sim_config &m_config;
+  gpgpu_sim_config &m_config;
 
   const struct cudaDeviceProp *m_cuda_properties;
   const shader_core_config *m_shader_config;
-  const memory_config *m_memory_config;
+  memory_config *m_memory_config;
 
   // stats
   class shader_core_stats *m_shader_stats;
@@ -807,7 +833,7 @@ class gpgpu_sim : public gpgpu_t {
 
 class exec_gpgpu_sim : public gpgpu_sim {
  public:
-  exec_gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
+  exec_gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx)
       : gpgpu_sim(config, ctx) {
     createSIMTCluster();
   }
@@ -821,7 +847,7 @@ class exec_gpgpu_sim : public gpgpu_sim {
  */
 class sst_gpgpu_sim : public gpgpu_sim {
  public:
-  sst_gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
+  sst_gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx)
       : gpgpu_sim(config, ctx) {
     createSIMTCluster();
   }

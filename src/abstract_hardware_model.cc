@@ -283,7 +283,7 @@ void warp_inst_t::broadcast_barrier_reduction(
   }
 }
 
-void warp_inst_t::generate_mem_accesses() {
+void warp_inst_t::generate_mem_accesses(int cta_id) {
   if (empty() || op == MEMORY_BARRIER_OP || m_mem_accesses_created) return;
   if (!((op == LOAD_OP) || (op == TENSOR_CORE_LOAD_OP) || (op == STORE_OP) ||
         (op == TENSOR_CORE_STORE_OP)))
@@ -434,9 +434,9 @@ void warp_inst_t::generate_mem_accesses() {
     case param_space_local:
       if (m_config->gpgpu_coalesce_arch >= 13) {
         if (isatomic())
-          memory_coalescing_arch_atomic(is_write, access_type);
+          memory_coalescing_arch_atomic(is_write, access_type, cta_id);
         else
-          memory_coalescing_arch(is_write, access_type);
+          memory_coalescing_arch(is_write, access_type, cta_id);
       } else
         abort();
 
@@ -464,7 +464,7 @@ void warp_inst_t::generate_mem_accesses() {
     for (a = accesses.begin(); a != accesses.end(); ++a)
       m_accessq.push_back(mem_access_t(
           access_type, a->first, cache_block_size, is_write, a->second,
-          byte_mask, mem_access_sector_mask_t(), m_config->gpgpu_ctx));
+          byte_mask, mem_access_sector_mask_t(), cta_id, m_config->gpgpu_ctx));
   }
 
   if (space.get_type() == global_space) {
@@ -475,7 +475,7 @@ void warp_inst_t::generate_mem_accesses() {
 }
 
 void warp_inst_t::memory_coalescing_arch(bool is_write,
-                                         mem_access_type access_type) {
+                                         mem_access_type access_type, int cta_id) {
   // see the CUDA manual where it discusses coalescing rules before reading this
   unsigned segment_size = 0;
   unsigned warp_parts = m_config->mem_warp_parts;
@@ -582,13 +582,13 @@ void warp_inst_t::memory_coalescing_arch(bool is_write,
       const transaction_info &info = t->second;
 
       memory_coalescing_arch_reduce_and_send(is_write, access_type, info, addr,
-                                             segment_size);
+                                             segment_size, cta_id);
     }
   }
 }
 
 void warp_inst_t::memory_coalescing_arch_atomic(bool is_write,
-                                                mem_access_type access_type) {
+                                                mem_access_type access_type, int cta_id) {
   assert(space.get_type() ==
          global_space);  // Atomics allowed only for global memory
 
@@ -687,7 +687,7 @@ void warp_inst_t::memory_coalescing_arch_atomic(bool is_write,
         // For each transaction
         const transaction_info &info = *t;
         memory_coalescing_arch_reduce_and_send(is_write, access_type, info,
-                                               addr, segment_size);
+                                               addr, segment_size, cta_id);
       }
     }
   }
@@ -695,7 +695,7 @@ void warp_inst_t::memory_coalescing_arch_atomic(bool is_write,
 
 void warp_inst_t::memory_coalescing_arch_reduce_and_send(
     bool is_write, mem_access_type access_type, const transaction_info &info,
-    new_addr_type addr, unsigned segment_size) {
+    new_addr_type addr, unsigned segment_size, int cta_id) {
   assert((addr & (segment_size - 1)) == 0);
 
   const std::bitset<4> &q = info.chunks;
@@ -745,7 +745,7 @@ void warp_inst_t::memory_coalescing_arch_reduce_and_send(
     }
   }
   m_accessq.push_back(mem_access_t(access_type, addr, size, is_write,
-                                   info.active, info.bytes, info.chunks,
+                                   info.active, info.bytes, info.chunks, cta_id,
                                    m_config->gpgpu_ctx));
 }
 
@@ -1135,8 +1135,7 @@ void simt_stack::update(simt_mask_t &thread_done, addr_vector_t &next_pc,
       new_stack_entry.m_branch_div_cycle =
           m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
       new_stack_entry.m_type = STACK_ENTRY_TYPE_CALL;
-      m_stack.pus  m_mem_accesses_count += info.active.count();
-h_back(new_stack_entry);
+      m_stack.push_back(new_stack_entry);
       return;
     } else if (next_inst_op == RET_OPS && top_type == STACK_ENTRY_TYPE_CALL) {
       // pop the CALL Entry

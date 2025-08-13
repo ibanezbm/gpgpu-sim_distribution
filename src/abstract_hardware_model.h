@@ -814,18 +814,20 @@ class mem_access_t {
   mem_access_t(mem_access_type type, new_addr_type address, unsigned size,
                bool wr, const active_mask_t &active_mask,
                const mem_access_byte_mask_t &byte_mask,
-               const mem_access_sector_mask_t &sector_mask, gpgpu_context *ctx)
+               const mem_access_sector_mask_t &sector_mask, int cta_id, gpgpu_context *ctx)
       : m_warp_mask(active_mask),
         m_byte_mask(byte_mask),
         m_sector_mask(sector_mask) {
     init(ctx);
     m_type = type;
     m_addr = address;
+    m_cta = cta_id;
     m_req_size = size;
     m_write = wr;
   }
 
   new_addr_type get_addr() const { return m_addr; }
+  int get_ctaid() {return m_cta;}
   void set_addr(new_addr_type addr) { m_addr = addr; }
   unsigned get_size() const { return m_req_size; }
   const active_mask_t &get_warp_mask() const { return m_warp_mask; }
@@ -879,6 +881,7 @@ class mem_access_t {
   unsigned m_uid;
   new_addr_type m_addr;  // request address
   bool m_write;
+  int m_cta;
   unsigned m_req_size;  // bytes
   mem_access_type m_type;
   active_mask_t m_warp_mask;
@@ -890,7 +893,7 @@ class mem_fetch;
 
 class mem_fetch_interface {
  public:
-  virtual bool full(unsigned size, bool write) const = 0;
+  virtual bool full(unsigned size, bool write, mem_fetch* mf) const = 0;
   virtual void push(mem_fetch *mf) = 0;
 };
 
@@ -905,9 +908,9 @@ class mem_fetch_allocator {
   virtual mem_fetch *alloc(new_addr_type addr, mem_access_type type,
                            const active_mask_t &active_mask,
                            const mem_access_byte_mask_t &byte_mask,
-                           const mem_access_sector_mask_t &sector_mask,
+                           const mem_access_sector_mask_t &sector_mask, int cta_id,
                            unsigned size, bool wr, unsigned long long cycle,
-                           unsigned wid, unsigned sid, unsigned tpc,
+                           unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet,
                            mem_fetch *original_mf,
                            unsigned long long streamID) const = 0;
 };
@@ -1146,15 +1149,15 @@ class warp_inst_t : public inst_t {
     }
   };
 
-  void generate_mem_accesses();
-  void memory_coalescing_arch(bool is_write, mem_access_type access_type);
+  void generate_mem_accesses(int cta_id);
+  void memory_coalescing_arch(bool is_write, mem_access_type access_type, int cta_id);
   void memory_coalescing_arch_atomic(bool is_write,
-                                     mem_access_type access_type);
+                                     mem_access_type access_type, int cta_id);
   void memory_coalescing_arch_reduce_and_send(bool is_write,
                                               mem_access_type access_type,
                                               const transaction_info &info,
                                               new_addr_type addr,
-                                              unsigned segment_size);
+                                              unsigned segment_size, int cta_id);
 
   void add_callback(unsigned lane_id,
                     void (*function)(const class inst_t *,
@@ -1329,6 +1332,8 @@ class core_t {
   virtual void warp_exit(unsigned warp_id) = 0;
   virtual bool warp_waiting_at_barrier(unsigned warp_id) const = 0;
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
+                                             unsigned tid) = 0;
+  virtual void checkExecutionDynamicStatusAndUpdate(warp_inst_t &inst, unsigned t,
                                              unsigned tid) = 0;
   class gpgpu_sim *get_gpu() { return m_gpu; }
   void execute_warp_inst_t(warp_inst_t &inst, unsigned warpId = (unsigned)-1);

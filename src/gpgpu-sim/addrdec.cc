@@ -103,7 +103,7 @@ new_addr_type linear_to_raw_address_translation::partition_address(
 }
 
 void linear_to_raw_address_translation::addrdec_tlx_const(new_addr_type addr,
-                                                    addrdec_t *tlx, unsigned chip) const{
+                                                    addrdec_t *tlx, unsigned chip) {
   unsigned long long int addr_for_chip, rest_of_addr, rest_of_addr_high_bits;
   if (!gap) {
     if(virtual_memory){
@@ -681,7 +681,7 @@ class hash_addrdec_t {
 
 // a simple sweep test to ensure that two linear addresses are not mapped to the
 // same raw address
-void linear_to_raw_address_translation::sweep_test() const {
+void linear_to_raw_address_translation::sweep_test() {
   new_addr_type sweep_range = 16 * 1024 * 1024;
 
 #if tr1_hash_map_ismap == 1
