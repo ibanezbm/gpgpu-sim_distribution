@@ -1,22 +1,19 @@
-// Copyright (c) 2009-2021, Tor M. Aamodt, Wilson W.L. Fung, George L. Yuan,
-// Ali Bakhoda, Andrew Turner, Ivan Sham, Vijay Kandiah, Nikos Hardavellas,
-// Mahmoud Khairy, Junrui Pan, Timothy G. Rogers
-// The University of British Columbia, Northwestern University, Purdue
-// University All rights reserved.
+// Copyright (c) 2009-2011, Tor M. Aamodt, Wilson W.L. Fung, George L. Yuan,
+// Ali Bakhoda, Andrew Turner, Ivan Sham
+// The University of British Columbia
+// All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice,
-// this
-//    list of conditions and the following disclaimer;
-// 2. Redistributions in binary form must reproduce the above copyright notice,
-//    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution;
-// 3. Neither the names of The University of British Columbia, Northwestern
-//    University nor the names of their contributors may be used to
-//    endorse or promote products derived from this software without specific
-//    prior written permission.
+// Redistributions of source code must retain the above copyright notice, this
+// list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution. Neither the name of
+// The University of British Columbia nor the names of its contributors may be
+// used to endorse or promote products derived from this software without
+// specific prior written permission.
 //
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 // AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -31,11 +28,11 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "gpu-sim.h"
-
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include<tuple>
 #include "zlib.h"
 
 #include "dram.h"
@@ -81,7 +78,9 @@ class gpgpu_sim_wrapper {};
 #include <sstream>
 #include <string>
 
-// #define MAX(a, b) (((a) > (b)) ? (a) : (b)) //redefined
+// Undefine previously defined to get rid of compile warings
+#undef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 bool g_interactive_debugger_enabled = false;
 
@@ -425,6 +424,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_n_cores_per_cluster", OPT_UINT32,
                          &n_simt_cores_per_cluster,
                          "number of simd cores per cluster", "3");
+  option_parser_register(opp, "-n_chiplet", OPT_UINT32,
+                         &n_chiplet,
+                         "number of chiplet", "4");
   option_parser_register(opp, "-gpgpu_n_cluster_ejection_buffer_size",
                          OPT_UINT32, &n_simt_ejection_buffer_size,
                          "number of packets in ejection buffer", "8");
@@ -678,6 +680,22 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
                          "terminates gpu simulation early (0 = no limit)", "0");
   option_parser_register(opp, "-gpgpu_max_cta", OPT_INT32, &gpu_max_cta_opt,
                          "terminates gpu simulation early (0 = no limit)", "0");
+  option_parser_register(opp, "-remote_pc", OPT_UINT32, &remote_pc,
+                         "Remote pc", "0");
+  option_parser_register(opp, "-kernel_remote", OPT_CSTR, &kernel_remote,
+                         "Name kernel pc", "");
+  option_parser_register(opp, "-end_remote", OPT_UINT32, &end_remote,
+                         "End remote pc", "0");
+  option_parser_register(opp, "-min_threads_remote", OPT_UINT32, &min_threads_remote_warp,
+                         "Minimun number of threads per remote warp", "100");
+  option_parser_register(opp, "-min_warps_stall_load", OPT_UINT32, &min_warps_stall_load,
+                         "Minimun number of warps stall per remote warp", "0");  
+  option_parser_register(opp, "-remote_option", OPT_CSTR,
+                         &remote_mode, "Mode of create a remote warp","normal");                     
+  option_parser_register(opp, "-new_scheduler", OPT_UINT32, &new_scheduler,
+                         "New scheduler", "0");
+  option_parser_register(opp, "-remotes_per_shader", OPT_UINT32, &remotes_per_shader,
+                         "New scheduler", "1");
   option_parser_register(opp, "-gpgpu_max_completed_cta", OPT_INT32,
                          &gpu_max_completed_cta_opt,
                          "terminates gpu simulation early (0 = no limit)", "0");
@@ -1234,14 +1252,7 @@ void gpgpu_sim::init() {
   partiton_replys_in_parallel = 0;
   partiton_reqs_in_parallel_util = 0;
   gpu_sim_cycle_parition_util = 0;
-
-// McPAT initialization function. Called on first launch of GPU
-#ifdef GPGPUSIM_POWER_MODEL
-  if (m_config.g_power_simulation_enabled) {
-    init_mcpat(m_config, m_gpgpusim_wrapper, m_config.gpu_stat_sample_freq,
-               gpu_tot_sim_insn, gpu_sim_insn);
-  }
-#endif
+  m_last_cluster_issue = m_shader_config->n_simt_clusters - 1;  // this causes first launch to use simt cluster 0
 
   reinit_clock_domains();
   gpgpu_ctx->func_sim->set_param_gpgpu_num_shaders(m_config.num_shader());
@@ -1307,6 +1318,7 @@ void gpgpu_sim::print_stats(unsigned long long streamID) {
     printf(
         "----------------------------Interconnect-DETAILS----------------------"
         "----------\n");
+    Ring->print_stats();
     for(unsigned int j = 0; j < m_shader_config->n_chiplet; j++){
       icnt_display_stats[j](j);
       icnt_display_overall_stats[j](j);
@@ -1351,8 +1363,8 @@ void gpgpu_sim::deadlock_check() {
         printf("GPGPU-Sim uArch DEADLOCK:  memory partition %u busy\n", i);
     }
     for(unsigned int j = 0; j < m_shader_config->n_chiplet; j++){
-      if (icnt_busy[j](j)) {
-        printf("GPGPU-Sim uArch DEADLOCK:  iterconnect contains traffic\n");
+     if (icnt_busy[j](j)) {
+        printf("GPGPU-Sim uArch DEADLOCK:  iterconnect contains traffic %d\n", j);
         icnt_display_state[j](stdout,j);
       }
     }
@@ -1559,7 +1571,7 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   printf("gpu_total_sim_rate=%u\n",
          (unsigned)((gpu_tot_sim_insn + gpu_sim_insn) / elapsed_time));
 
-  // shader_print_l1_miss_stat( stdout );
+  shader_print_l1_miss_stat( stdout );
   shader_print_cache_stats(stdout);
 
   cache_stats core_cache_stats;
@@ -1646,6 +1658,28 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
       total_l2_css.print_port_stats(stdout, "L2_cache");
     }
   }
+
+  printf("-------------New Stats----------------\n");
+  for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
+    printf("n_warps_created[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_warps_created);
+    printf("n_warps_remote[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_warps_remote);
+    printf("n_warps_remote_total[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_warps_remote_total);
+    printf("n_warps_remote_unique_total[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_unique_warps_remote);
+    printf("n_warps_remote_recibed[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->dynamic_working);
+    printf("n_total_threads[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_total_threads);
+    printf("n_total_threads_remote[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_total_threads_remote);
+  }
+  printf("ring_request_total_bytes = %lld\n",traffic_information["ring_request_total_bytes"]);
+  printf("ring_reply_total_bytes = %lld\n",traffic_information["ring_reply_total_bytes"]);
+  printf("local_request_total_bytes = %lld\n",traffic_information["local_request_total_bytes"]);
+  printf("local_reply_total_bytes = %lld\n",traffic_information["local_reply_total_bytes"]);
+  printf("total_cycles_icnt = %lld\n", this->Ring->cycles);
+  printf("frecuence_icnt = %f\n", this->m_config.icnt_freq);
+  printf("seconds_icnt = %f\n", this->Ring->cycles/this->m_config.icnt_freq);
+  printf("ring_request_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_request_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
+  printf("ring_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_reply_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
+  printf("local_request_total_bytes/s (MB/s) = %f\n",(traffic_information["local_request_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
+  printf("local_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["local_reply_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
 
   if (m_config.gpgpu_cflog_interval != 0) {
     spill_log_to_file(stdout, 1, gpu_sim_cycle);
@@ -1953,6 +1987,7 @@ void shader_core_ctx::issue_block2core(kernel_info_t &kernel) {
   // initialize the SIMT stacks and fetch hardware
   init_warps(free_cta_hw_id, start_thread, end_thread, ctaid, cta_size, kernel);
   m_n_active_cta++;
+  n_ctas_issued++;
 
   shader_CTA_count_log(m_sid, 1);
   SHADER_DPRINTF(LIVENESS,
@@ -2000,12 +2035,22 @@ int gpgpu_sim::next_clock_domain(void) {
 
 void gpgpu_sim::issue_block2core() {
   unsigned last_issued = m_last_cluster_issue;
+  if(last_issued >= m_shader_config->n_simt_clusters){
+    last_issued = (last_issued + 1) % m_shader_config->n_chiplet;
+  }else{
+    last_issued = (last_issued + 1) % m_shader_config->n_simt_clusters;
+  }
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
-    unsigned idx = (i + last_issued + 1) % m_shader_config->n_simt_clusters;
+    unsigned idx = last_issued;
     unsigned num = m_cluster[idx]->issue_block2core();
     if (num) {
       m_last_cluster_issue = idx;
       m_total_cta_launched += num;
+    }
+    if(last_issued >= m_shader_config->n_simt_clusters){
+      last_issued = (last_issued + 1) % m_shader_config->n_chiplet;
+    }else{
+      last_issued = (last_issued + 1) % m_shader_config->n_simt_clusters;
     }
   }
 }
@@ -2124,11 +2169,104 @@ void gpgpu_sim::cycle() {
           push = true;
         }
       }
+
+      unsigned mem_chiplet = m_memory_sub_partition[i]->get_chiplet();
+      mem_fetch *mf = Ring->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+      if (mf != NULL){
+        if(m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet() != mem_chiplet && 
+        Ring->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(),0)){
+          Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+          Ring->push_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(), mf, 
+                            mf->get_is_write() ? mf->get_ctrl_size() : mf->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
+         
+        }else if (mf->get_sub_partition_id() == i){
+          if (!mf->get_is_write() && !mf->isatomic()){
+            traffic_information["ring_request_actual_bytes"] -= mf->get_ctrl_size();
+          }else{
+            traffic_information["ring_request_actual_bytes"] -= mf->size();
+          }
+          if (mf->get_access_type() != INST_ACC_R && !mf->get_is_write() &&
+            !mf->isatomic()) {
+              if (mf->get_type() == TO_SM && mf->get_pc()== m_config.get_remote_pc()){
+                Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+                unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()];
+                unsigned finded = false;
+                if(!finded){
+                  position_to_index_dynamic.push_back(cluster_executed);
+                  cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] += m_shader_config->n_chiplet;
+                  if(cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] >= m_shader_config->n_simt_clusters){
+                    cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] = m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+                  }
+                }
+                m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf, m_config.get_remote_pc());
+              }else{
+                if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+                  m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
+                  Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+                  push = true;
+                }
+              }
+          }else{
+            if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+              m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
+              push = true;
+              Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+            }
+          }
+        }
+      }
+
+      mem_fetch *mf2 = Ring->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+      if (mf2 != NULL){
+        if(m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet() != mem_chiplet &&
+        Ring->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),0)){
+          Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+          Ring->push_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),
+           mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
+        
+        }else if (mf2->get_sub_partition_id() == i){
+          if (!mf2->get_is_write() && !mf2->isatomic()){
+            traffic_information["ring_request_actual_bytes"] -= mf2->get_ctrl_size();
+          }else{
+            traffic_information["ring_request_actual_bytes"] -= mf2->size();
+          }
+          if (mf2->get_access_type() != INST_ACC_R && !mf2->get_is_write() &&
+          !mf2->isatomic()) {
+              if (mf2->get_type() == TO_SM && mf2->get_pc()== m_config.get_remote_pc()){
+                Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+                unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()];
+                unsigned finded = false;
+                if(!finded){
+                  position_to_index_dynamic.push_back(cluster_executed);
+                  cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] += m_shader_config->n_chiplet;
+                  if(cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] >= m_shader_config->n_simt_clusters){
+                    cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] = m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet();
+                  }
+                }
+                m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf2, m_config.get_remote_pc());
+              }else{
+                if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+                  Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+                  m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
+                  push = true;
+                }
+              }
+          }else{
+            if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+              Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+              m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
+              push = true;
+            }
+          }
+        }
+      }
       m_memory_sub_partition[i]->cache_cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
       if (m_config.g_power_simulation_enabled) {
         m_memory_sub_partition[i]->accumulate_L2cache_stats(
             m_power_stats->pwr_mem_stat->l2_cache_stats[CURRENT_STAT_IDX]);
       }
+      m_memory_sub_partition[i]->accumulate_L2cache_stats(
+      m_power_stats->pwr_mem_stat->l2_cache_stats[CURRENT_STAT_IDX]);
     }
   }
   partiton_reqs_in_parallel += partiton_reqs_in_parallel_per_cycle;
@@ -2148,7 +2286,7 @@ void gpgpu_sim::cycle() {
     // L1 cache + shader core pipeline stages
     m_power_stats->pwr_mem_stat->core_cache_stats[CURRENT_STAT_IDX].clear();
     for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
-      if (m_cluster[i]->get_not_completed() || get_more_cta_left()) {
+      if (m_cluster[i]->get_not_completed() || get_more_cta_left() || m_cluster[i]->dynamic_warps_pending()) {
         m_cluster[i]->core_cycle();
         *active_sms += m_cluster[i]->get_n_active_sms();
       }
