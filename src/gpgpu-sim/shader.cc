@@ -181,7 +181,7 @@ void shader_core_ctx::create_front_pipeline() {
     m_icnt = new shader_memory_interface(this, m_cluster);
   }
   m_mem_fetch_allocator =
-      new shader_core_mem_fetch_allocator(m_sid, m_tpc, m_memory_config);
+      new shader_core_mem_fetch_allocator(m_sid, m_tpc, m_chiplet, m_memory_config);
 
   // fetch
   m_last_warp_fetched = 0;
@@ -217,7 +217,7 @@ void shader_core_ctx::create_schedulers() {
     switch (scheduler) {
       case CONCRETE_SCHEDULER_LRR:
         schedulers.push_back(new lrr_scheduler(
-            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp, &m_dynamic_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
             &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
@@ -225,7 +225,7 @@ void shader_core_ctx::create_schedulers() {
         break;
       case CONCRETE_SCHEDULER_TWO_LEVEL_ACTIVE:
         schedulers.push_back(new two_level_active_scheduler(
-            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp, &m_dynamic_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
             &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
@@ -233,7 +233,7 @@ void shader_core_ctx::create_schedulers() {
         break;
       case CONCRETE_SCHEDULER_GTO:
         schedulers.push_back(new gto_scheduler(
-            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp, &m_dynamic_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
             &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
@@ -241,7 +241,7 @@ void shader_core_ctx::create_schedulers() {
         break;
       case CONCRETE_SCHEDULER_RRR:
         schedulers.push_back(new rrr_scheduler(
-            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp, &m_dynamic_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
             &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
@@ -249,7 +249,7 @@ void shader_core_ctx::create_schedulers() {
         break;
       case CONCRETE_SCHEDULER_OLDEST_FIRST:
         schedulers.push_back(new oldest_scheduler(
-            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp, &m_dynamic_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
             &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
@@ -257,7 +257,7 @@ void shader_core_ctx::create_schedulers() {
         break;
       case CONCRETE_SCHEDULER_WARP_LIMITING:
         schedulers.push_back(new swl_scheduler(
-            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp, &m_dynamic_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
             &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
@@ -1687,13 +1687,13 @@ void two_level_active_scheduler::order_warps() {
 
 swl_scheduler::swl_scheduler(shader_core_stats *stats, shader_core_ctx *shader,
                              Scoreboard *scoreboard, simt_stack **simt,
-                             std::vector<shd_warp_t *> *warp,
+                             std::vector<shd_warp_t *> *warp, std::vector<shd_warp_t *> *dynamic_warp,
                              register_set *sp_out, register_set *dp_out,
                              register_set *sfu_out, register_set *int_out,
                              register_set *tensor_core_out,
                              std::vector<register_set *> &spec_cores_out,
                              register_set *mem_out, int id, char *config_string)
-    : scheduler_unit(stats, shader, scoreboard, simt, warp, sp_out, dp_out,
+    : scheduler_unit(stats, shader, scoreboard, simt, warp, dynamic_warp, sp_out, dp_out,
                      sfu_out, int_out, tensor_core_out, spec_cores_out, mem_out,
                      id) {
   unsigned m_prioritization_readin;
@@ -1848,9 +1848,15 @@ void shader_core_ctx::execute() {
 }
 
 void ldst_unit::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
-                                  unsigned &dl1_misses) {
+                                  unsigned &dl1_misses, unsigned long long &sum_messages_mshr,
+                                  unsigned long long &cycles_mshr) {
   if (m_L1D) {
+    sum_messages_mshr += current_messages_mshr;
+    cycles_mshr += total_cycles_mshr;
     m_L1D->print(fp, dl1_accesses, dl1_misses);
+    printf("HITS MSHR:%lld\n",m_L1D->mshr_hit);
+    printf("HITS ADD:%lld\n",m_L1D->mshr_add);
+    printf("HITS removes:%lld\n",m_L1D->m_mshrs.removes);
   }
 }
 
@@ -3195,12 +3201,17 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
 
 void gpgpu_sim::shader_print_l1_miss_stat(FILE *fout) const {
   unsigned total_d1_misses = 0, total_d1_accesses = 0;
+  unsigned long long total_sum_messages_mshr = 0, total_cycles_mshr = 0;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
     unsigned custer_d1_misses = 0, cluster_d1_accesses = 0;
+    unsigned long long sum_messages_mshr = 0, cycles_mshr = 0;
     m_cluster[i]->print_cache_stats(fout, cluster_d1_accesses,
-                                    custer_d1_misses);
+                                    custer_d1_misses, sum_messages_mshr,
+                                    cycles_mshr);
     total_d1_misses += custer_d1_misses;
     total_d1_accesses += cluster_d1_accesses;
+    total_sum_messages_mshr += sum_messages_mshr;
+    total_cycles_mshr += cycles_mshr;
   }
   fprintf(fout, "total_dl1_misses=%d\n", total_d1_misses);
   fprintf(fout, "total_dl1_accesses=%d\n", total_d1_accesses);
@@ -4053,8 +4064,9 @@ void shader_core_ctx::store_ack(class mem_fetch *mf) {
 }
 
 void shader_core_ctx::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
-                                        unsigned &dl1_misses) {
-  m_ldst_unit->print_cache_stats(fp, dl1_accesses, dl1_misses);
+                                        unsigned &dl1_misses,unsigned long long &sum_messages_mshr,
+                         unsigned long long &cycles_mshr) {
+  m_ldst_unit->print_cache_stats(fp, dl1_accesses, dl1_misses,sum_messages_mshr,cycles_mshr);
 }
 
 void shader_core_ctx::get_cache_stats(cache_stats &cs) {
@@ -5301,9 +5313,10 @@ void simt_core_cluster::display_pipeline(unsigned sid, FILE *fout,
 }
 
 void simt_core_cluster::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
-                                          unsigned &dl1_misses) const {
+                                          unsigned &dl1_misses,unsigned long long &sum_messages_mshr,
+                         unsigned long long &cycles_mshr) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
-    m_core[i]->print_cache_stats(fp, dl1_accesses, dl1_misses);
+    m_core[i]->print_cache_stats(fp, dl1_accesses, dl1_misses,sum_messages_mshr,cycles_mshr);
   }
 }
 
