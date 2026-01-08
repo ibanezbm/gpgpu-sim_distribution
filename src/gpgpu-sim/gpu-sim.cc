@@ -426,7 +426,7 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "number of simd cores per cluster", "3");
   option_parser_register(opp, "-n_chiplet", OPT_UINT32,
                          &n_chiplet,
-                         "number of chiplet", "4");
+                         "number of chiplet", "1");
   option_parser_register(opp, "-gpgpu_n_cluster_ejection_buffer_size",
                          OPT_UINT32, &n_simt_ejection_buffer_size,
                          "number of packets in ejection buffer", "8");

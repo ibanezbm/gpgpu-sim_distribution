@@ -41,25 +41,10 @@ ring::ring(unsigned number_of_networks, double freq){
 }
 
 void ring::push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle){
-    /*std::srand(static_cast<unsigned int>(0));
-    int random_number = (std::rand() % 2) + 1;
-    if((input == 0 && output == 3)){
-        output = random_number;
-    }else if(((input == 3 && output == 0))){
-        output = random_number;
-    }else if((input == 1 && output == 2)){
-        output = (random_number-1)*3;
-    }else if((input == 2 && output == 1)){
-        output = (random_number-1)*3;
-    }
-    mf->set_priority(cycle+32);
-    buffers_reply[std::make_pair(input,output)].push_back(mf);*/
     if(mf->m_status_L2_to_RAM < 5000 && mf->m_status_L2_to_RAM != 0 &&
         mf->m_status_RAM_to_L2 < 5000 && mf->m_status_RAM_to_L2 != 0 &&
         mf->m_status_L2_to_ICNT < 5000 && mf->m_status_L2_to_ICNT != 0 ){
-            //printf("BBBBBBB %lld %lld %lld %d\n", mf->m_status_L2_to_RAM,
-            //mf->m_status_RAM_to_L2,mf->m_status_L2_to_ICNT,
-            //mf->get_type());
+
         latency_L2_to_RAM[mf->get_chiplet()] += mf->m_status_L2_to_RAM;
         latency_RAM_to_L2[mf->get_chiplet()] += mf->m_status_RAM_to_L2;
         latency_L2_to_ICNT[mf->get_chiplet()] += mf->m_status_L2_to_ICNT;

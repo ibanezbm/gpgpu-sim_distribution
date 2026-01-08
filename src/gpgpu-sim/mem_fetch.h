@@ -200,7 +200,7 @@ class mem_fetch {
   mem_fetch *original_wr_mf;  // this pointer refers to the original write req,
                               // when fetch-on-write policy is used
   public:
-  addrdec_t m_raw_addr;  // raw physical address (i.e., decoded DRAM
+    addrdec_t m_raw_addr;  // raw physical address (i.e., decoded DRAM
     unsigned chiptlet_destino = -1;
     unsigned long long m_status_L2_to_RAM;
     unsigned long long m_status_RAM_to_L2;

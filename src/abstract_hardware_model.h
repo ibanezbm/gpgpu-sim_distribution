@@ -1233,6 +1233,8 @@ class warp_inst_t : public inst_t {
   unsigned long long get_streamID() const { return m_streamID; }
   unsigned get_schd_id() const { return m_scheduler_id; }
   active_mask_t get_warp_active_mask() const { return m_warp_active_mask; }
+  unsigned m_warp_id;
+  std::list<mem_access_t> m_accessq;
 
  protected:
   unsigned m_uid;
@@ -1244,7 +1246,6 @@ class warp_inst_t : public inst_t {
   bool m_isatomic;
   bool should_do_atomic;
   bool m_is_printf;
-  unsigned m_warp_id;
   unsigned m_dynamic_warp_id;
   const core_config *m_config;
   active_mask_t m_warp_active_mask;  // dynamic active mask for timing model
@@ -1269,12 +1270,12 @@ class warp_inst_t : public inst_t {
   bool m_per_scalar_thread_valid;
   std::vector<per_thread_info> m_per_scalar_thread;
   bool m_mem_accesses_created;
-  std::list<mem_access_t> m_accessq;
 
   unsigned m_scheduler_id;  // the scheduler that issues this inst
 
   // Jin: cdp support
  public:
+  unsigned m_mem_accesses_count = 0;
   int m_is_cdp;
 
   // Ni: add boolean to indicate whether the instruction is ldgsts

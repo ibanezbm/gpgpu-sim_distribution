@@ -34,6 +34,20 @@
 
 unsigned mem_fetch::sm_next_mf_request_uid = 1;
 
+mem_fetch::mem_fetch(unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet, int ctaid, mf_type type,
+                      active_mask_t mask, addrdec_t raw_addr, unsigned ctr_size, std::vector<mem_fetch *> req){
+      m_sid = sid;
+      m_tpc = tpc;
+      m_wid = wid;
+      m_chiplet = chiplet;
+      set_type(type);
+      m_ctaid = ctaid;
+      active_dynamic_warp_mask = mask;
+      m_raw_addr = raw_addr;
+      m_ctrl_size = ctr_size;
+      requests = req;
+}
+
 mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
                      unsigned long long streamID, unsigned ctrl_size,
                      unsigned wid, unsigned sid, unsigned tpc, unsigned chiplet,
@@ -51,6 +65,7 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   m_streamID = streamID;
   m_data_size = access.get_size();
   m_ctrl_size = ctrl_size;
+  m_chiplet = chiplet;
   m_sid = sid;
   m_tpc = tpc;
   m_wid = wid;
@@ -58,7 +73,7 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   if (!config->is_SST_mode()) {
     // In SST memory model, the SST memory hierarchy is
     // responsible to generate the correct address mapping
-    config->m_address_mapping.addrdec_tlx(access.get_addr(), &m_raw_addr, m_original_mf->get_tlx_addr().chip);
+    config->m_address_mapping.addrdec_tlx(access.get_addr(), &m_raw_addr, chiplet);
     m_partition_addr =
         config->m_address_mapping.partition_address(access.get_addr());
   }
@@ -110,6 +125,24 @@ void mem_fetch::print(FILE *fp, bool print_inst) const {
 
 void mem_fetch::set_status(enum mem_fetch_status status,
                            unsigned long long cycle) {
+  if(status == IN_PARTITION_ICNT_TO_L2_QUEUE){
+    m_status_L2_to_RAM = cycle;
+  }
+
+  if(status == IN_PARTITION_L2_TO_DRAM_QUEUE){
+    m_status_L2_to_RAM = cycle - m_status_L2_to_RAM;
+    m_status_RAM_to_L2 = cycle;
+  }
+
+  if(status == IN_PARTITION_DRAM_TO_L2_QUEUE){
+    m_status_RAM_to_L2 = cycle - m_status_RAM_to_L2;
+    m_status_L2_to_ICNT = cycle;
+  }
+  
+  if(status == IN_ICNT_TO_SHADER){
+    m_status_L2_to_ICNT = cycle - m_status_L2_to_ICNT;
+  }
+
   m_status = status;
   m_status_change = cycle;
 }

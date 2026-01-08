@@ -192,6 +192,7 @@ bool memory_partition_unit::busy() const {
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel;
        p++) {
     if (m_sub_partition[p]->busy()) {
+      //m_sub_partition[p]->print(stdout);
       busy = true;
     }
   }

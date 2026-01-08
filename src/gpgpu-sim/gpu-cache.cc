@@ -42,7 +42,7 @@
 
 const char *cache_request_status_str(enum cache_request_status status) {
   static const char *static_cache_request_status_str[] = {
-      "HIT", "HIT_RESERVED", "MISS", "RESERVATION_FAIL", "SECTOR_MISS"};
+      "HIT", "HIT_RESERVED", "MISS", "RESERVATION_FAIL", "SECTOR_MISS", "MSHR_HIT"};
 
   assert(sizeof(static_cache_request_status_str) / sizeof(const char *) ==
          NUM_CACHE_REQUEST_STATUS);
@@ -1610,7 +1610,7 @@ enum cache_request_status data_cache::wr_miss_wa_naive(
              MISS);  // SECTOR_MISS and HIT_RESERVED should not send write back
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+          evicted.m_byte_mask, evicted.m_sector_mask, -1, evicted.m_modified_size,
           true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1, 
           NULL, mf->get_streamID());
       // the evicted block may have wrong chip id when advanced L2 hashing  is
@@ -1664,7 +1664,7 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
       if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
         mem_fetch *wb = m_memfetch_creator->alloc(
             evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-            evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+            evicted.m_byte_mask, evicted.m_sector_mask, -1, evicted.m_modified_size,
             true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
             NULL, mf->get_streamID());
         // the evicted block may have wrong chip id when advanced L2 hashing  is
@@ -1741,7 +1741,7 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
       if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
         mem_fetch *wb = m_memfetch_creator->alloc(
             evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-            evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+            evicted.m_byte_mask, evicted.m_sector_mask, -1, evicted.m_modified_size,
             true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
             NULL, mf->get_streamID());
         // the evicted block may have wrong chip id when advanced L2 hashing  is
@@ -1809,7 +1809,7 @@ enum cache_request_status data_cache::wr_miss_wa_lazy_fetch_on_read(
     if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+          evicted.m_byte_mask, evicted.m_sector_mask, -1, evicted.m_modified_size,
           true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
           NULL, mf->get_streamID());
       // the evicted block may have wrong chip id when advanced L2 hashing  is
@@ -1893,7 +1893,7 @@ enum cache_request_status data_cache::rd_miss_base(
     if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
-          evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size, -1,
+          evicted.m_byte_mask, evicted.m_sector_mask, -1, evicted.m_modified_size,
           true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1, -1,
           NULL, mf->get_streamID());
       // the evicted block may have wrong chip id when advanced L2 hashing  is
