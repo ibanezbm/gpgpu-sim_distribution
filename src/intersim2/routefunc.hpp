@@ -48,6 +48,11 @@ class RoutingContext{
     int gWriteReqBeginVC, gWriteReqEndVC;
     int gReadReplyBeginVC, gReadReplyEndVC;
     int gWriteReplyBeginVC, gWriteReplyEndVC;
+    int gK;//radix
+    int gN;//dimension
+    int gC;//concentration
+
+    int gNodes;
   
   RoutingContext() : gNumVCs(0),
                      gReadReqBeginVC(0), gReadReqEndVC(0),

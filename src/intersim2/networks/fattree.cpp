@@ -73,7 +73,7 @@ void FatTree::_ComputeSize( const Configuration& config )
   _k = config.GetInt( "k" );
   _n = config.GetInt( "n" );
    
-  gK = _k; gN = _n;
+  _rc->gK = _k; _rc->gN = _n;
   
   _nodes = powi( _k, _n );
 
@@ -216,8 +216,8 @@ void FatTree::_BuildNet( const Configuration& config )
 	int link = 
 	  ((level+1)*chan_per_level - chan_per_direction)  //which levellevel
 	  +neighborhood*level_offset   //region in level
-	  +port*routers_per_branch*gK  //sub region in region
-	  +(neighborhood_pos)%routers_per_branch*gK  //router in subregion
+	  +port*routers_per_branch*_rc->gK //sub region in region
+	  +(neighborhood_pos)%routers_per_branch*_rc->gK  //router in subregion
 	  +(neighborhood_pos)/routers_per_branch; //port on router
 
 	_Router(level, pos)->AddInputChannel( _chan[link],
@@ -245,8 +245,8 @@ void FatTree::_BuildNet( const Configuration& config )
 	int link = 
 	  ((level-1)*chan_per_level) //which levellevel
 	  +neighborhood*level_offset   //region in level
-	  +port*routers_per_branch*gK  //sub region in region
-	  +(neighborhood_pos)%routers_per_branch*gK //router in subregion
+	  +port*routers_per_branch*_rc->gK  //sub region in region
+	  +(neighborhood_pos)%routers_per_branch*_rc->gK //router in subregion
 	  +(neighborhood_pos)/routers_per_branch; //port on router
 
 	_Router(level, pos)->AddInputChannel( _chan[link],

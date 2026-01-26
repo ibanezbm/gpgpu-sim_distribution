@@ -98,13 +98,13 @@ Stats * GetStats(const std::string & name) {
 
 /* printing activity factor*/
 bool gPrintActivity;
-
+/*
 int gK;//radix
 int gN;//dimension
 int gC;//concentration
 
 int gNodes;
-
+*/
 //generate nocviewer trace
 bool gTrace;
 

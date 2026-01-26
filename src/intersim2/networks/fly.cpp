@@ -47,7 +47,7 @@ void KNFly::_ComputeSize( const Configuration &config )
   _k = config.GetInt( "k" );
   _n = config.GetInt( "n" );
 
-  gK = _k; gN = _n;
+  _rc->gK = _k; _rc->gN = _n;
 
   _nodes = powi( _k, _n );
 

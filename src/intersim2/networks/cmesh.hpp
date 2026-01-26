@@ -50,8 +50,8 @@ public:
   int GetN() const;
   int GetK() const;
 
-  static int NodeToRouter( int address ) ;
-  static int NodeToPort( int address ) ;
+  static int NodeToRouter( int address, int k ) ;
+  static int NodeToPort( int address, int k, int c ) ;
 
   static void RegisterRoutingFunctions() ;
 

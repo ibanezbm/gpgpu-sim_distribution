@@ -43,12 +43,12 @@ extern InterconnectInterface **g_icnt_interface;
 
 extern bool gPrintActivity;
 
-extern int gK;
+/*extern int gK;
 extern int gN;
 extern int gC;
 
 extern int gNodes;
-
+*/
 extern bool gTrace;
 
 extern std::ostream * gWatchOut;

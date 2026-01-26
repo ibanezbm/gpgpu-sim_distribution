@@ -62,7 +62,7 @@ void QTree::_ComputeSize( const Configuration& config )
 
   assert( _k == 4 && _n == 3 );
 
-  gK = _k; gN = _n;
+  _rc->gK = _k; _rc->gN = _n;
 
   _nodes = powi( _k, _n );
 

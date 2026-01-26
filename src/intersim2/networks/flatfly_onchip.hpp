@@ -79,10 +79,10 @@ void ugal_pni_flatfly_onchip( const RoutingContext* rc, const Router *r, const F
 void valiant_flatfly( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel,
 			  OutputSet *outputs, bool inject );
 
-int find_distance (int src, int dest);
-int find_ran_intm (int src, int dest);
-int flatfly_outport(int dest, int rID);
-int flatfly_transformation(int dest);
-int flatfly_outport_yx(int dest, int rID);
+int find_distance (int src, int dest, int k, int c, int n);
+int find_ran_intm (int src, int dest, int k, int c, int n);
+int flatfly_outport(int dest, int rID, int k, int c, int n);
+int flatfly_transformation(int dest, int c);
+int flatfly_outport_yx(int dest, int rID, int k, int c, int n);
 
 #endif

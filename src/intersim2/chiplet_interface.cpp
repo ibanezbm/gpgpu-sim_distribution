@@ -36,9 +36,91 @@ ChipletInterface::~ChipletInterface()
 };
 
 void ChipletInterface::push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) { 
+    // it should have free buffer
+  assert(HasBuffer(input_deviceID, size));
 
+  DPRINTF(INTERCONNECT, "Sent %d bytes from %d to %d", size, input_deviceID, output_deviceID);
+  
+  int output_icntID = _node_map[output_deviceID];
+  int input_icntID = _node_map[input_deviceID];
+
+#if 0
+  cout<<"Call interconnect push input: "<<input<<" output: "<<output<<endl;
+#endif
+
+  //TODO: move to _IssuePacket
+  //TODO: create a Inject and wrap _IssuePacket and _GeneratePacket
+  unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
+  int subnet;
+  
+  subnet = 1;
+
+  //TODO: Remove mem_fetch to reduce dependency
+  Flit::FlitType packet_type;
+  mem_fetch* mf = static_cast<mem_fetch*>(data);
+
+  switch (mf->get_type()) {
+    case READ_REQUEST:  packet_type = Flit::READ_REQUEST   ;break;
+    case WRITE_REQUEST: packet_type = Flit::WRITE_REQUEST  ;break;
+    case READ_REPLY:    packet_type = Flit::READ_REPLY     ;break;
+    case WRITE_ACK:     packet_type = Flit::WRITE_REPLY    ;break;
+    default:
+    	{
+    		cout<<"Type "<<mf->get_type()<<" is undefined!"<<endl;
+    		assert (0 && "Type is undefined");
+    	}
+  }
+
+  //TODO: _include_queuing ?
+  _traffic_manager->_GeneratePacket( input_icntID, -1, 0 /*class*/, _traffic_manager->_time, subnet, n_flits, packet_type, data, output_icntID);
+
+#if DOUB
+  cout <<"Traffic[" << subnet << "] (mapped) sending form "<< input_icntID << " to " << output_icntID << endl;
+#endif
 }
-void ChipletInterface::push_request(unsigned, unsigned, mem_fetch*, unsigned int, unsigned long) { }
+void ChipletInterface::push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) { 
+        // it should have free buffer
+  assert(HasBuffer(input_deviceID, size));
+
+  DPRINTF(INTERCONNECT, "Sent %d bytes from %d to %d", size, input_deviceID, output_deviceID);
+  
+  int output_icntID = _node_map[output_deviceID];
+  int input_icntID = _node_map[input_deviceID];
+
+#if 0
+  cout<<"Call interconnect push input: "<<input<<" output: "<<output<<endl;
+#endif
+
+  //TODO: move to _IssuePacket
+  //TODO: create a Inject and wrap _IssuePacket and _GeneratePacket
+  unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
+  int subnet;
+  
+  subnet = 0;
+
+  //TODO: Remove mem_fetch to reduce dependency
+  Flit::FlitType packet_type;
+  mem_fetch* mf = static_cast<mem_fetch*>(data);
+
+  switch (mf->get_type()) {
+    case READ_REQUEST:  packet_type = Flit::READ_REQUEST   ;break;
+    case WRITE_REQUEST: packet_type = Flit::WRITE_REQUEST  ;break;
+    case READ_REPLY:    packet_type = Flit::READ_REPLY     ;break;
+    case WRITE_ACK:     packet_type = Flit::WRITE_REPLY    ;break;
+    default:
+    	{
+    		cout<<"Type "<<mf->get_type()<<" is undefined!"<<endl;
+    		assert (0 && "Type is undefined");
+    	}
+  }
+
+  //TODO: _include_queuing ?
+  _traffic_manager->_GeneratePacket( input_icntID, -1, 0 /*class*/, _traffic_manager->_time, subnet, n_flits, packet_type, data, output_icntID);
+
+#if DOUB
+  cout <<"Traffic[" << subnet << "] (mapped) sending form "<< input_icntID << " to " << output_icntID << endl;
+#endif
+}
 
 mem_fetch* ChipletInterface::top_reply(unsigned, unsigned long) { return nullptr; }
 mem_fetch* ChipletInterface::top_request(unsigned, unsigned long) { return nullptr; }
