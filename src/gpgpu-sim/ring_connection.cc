@@ -83,7 +83,7 @@ bool ring::has_buffer_request(unsigned input, unsigned output, unsigned int size
     return routers[input]->has_buffer_request(input, output, size);
 }
 
-mem_fetch* ring::top_reply(unsigned module_number, unsigned long cycle, bool first_buffer){
+mem_fetch* ring::top_reply(unsigned module_number, unsigned long cycle){
     /*
     mem_fetch* mf = NULL;
     for (auto& par : ring_connections_reply) {
@@ -99,11 +99,11 @@ mem_fetch* ring::top_reply(unsigned module_number, unsigned long cycle, bool fir
             }    
         }
     }*/
-    return routers[module_number]->top_reply(module_number, cycle,first_buffer);
+    return routers[module_number]->top_reply(module_number, cycle);
     //return mf;
 }
 
-void ring::pop_reply(unsigned module_number, unsigned long cycle, bool first_buffer){
+void ring::pop_reply(unsigned module_number, unsigned long cycle){
     /*
     mem_fetch* mf = NULL;
     for (auto& par : ring_connections_reply) {
@@ -118,10 +118,10 @@ void ring::pop_reply(unsigned module_number, unsigned long cycle, bool first_buf
             }    
         }
     }*/
-    routers[module_number]->pop_reply(module_number, cycle,first_buffer);
+    routers[module_number]->pop_reply(module_number, cycle);
 }
 
-mem_fetch* ring::top_request(unsigned module_number,unsigned long cycle, bool first_buffer){
+mem_fetch* ring::top_request(unsigned module_number,unsigned long cycle){
     /*
     mem_fetch* mf = NULL;
     for (auto& par : ring_connections_request) {
@@ -137,11 +137,11 @@ mem_fetch* ring::top_request(unsigned module_number,unsigned long cycle, bool fi
             }
         }
     }*/
-    return routers[module_number]->top_request(module_number, cycle,first_buffer);
+    return routers[module_number]->top_request(module_number, cycle);
     //return mf;  
 }
 
-void ring::pop_request(unsigned module_number, unsigned long cycle, bool first_buffer){
+void ring::pop_request(unsigned module_number, unsigned long cycle){
     /*
     mem_fetch* mf = NULL;
     for (auto& par : ring_connections_request) {
@@ -156,10 +156,10 @@ void ring::pop_request(unsigned module_number, unsigned long cycle, bool first_b
             }    
         }
     }*/
-    routers[module_number]->pop_request(module_number, cycle,first_buffer);
+    routers[module_number]->pop_request(module_number, cycle);
 }
 
-void ring::cycle(unsigned long cycle){
+void ring::step(unsigned long cycle){
     /*
     for(unsigned i = 0; i < 4; i++){
         for(unsigned j = 0; j < 4; j++){

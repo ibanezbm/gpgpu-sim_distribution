@@ -148,8 +148,8 @@ int dragonfly_port(int rID, int source, int dest){
 }
 
 
-DragonFlyNew::DragonFlyNew( const Configuration &config, const string & name ) :
-  Network( config, name )
+DragonFlyNew::DragonFlyNew( const Configuration &config, const string & name, RoutingContext* rc ) :
+  Network( config, name, rc )
 {
 
   _ComputeSize( config );
@@ -246,7 +246,7 @@ void DragonFlyNew::_BuildNet( const Configuration &config )
     router_name << "_" <<  node ;
 
     _routers[node] = Router::NewRouter( config, this, router_name.str( ), 
-					node, _k, _k );
+					node, _k, _k , _rc);
     _timed_modules.push_back(_routers[node]);
 
     router_name.str("");
@@ -417,13 +417,13 @@ void DragonFlyNew::RegisterRoutingFunctions(){
 }
 
 
-void min_dragonflynew( const Router *r, const Flit *f, int in_channel, 
+void min_dragonflynew( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 		       OutputSet *outputs, bool inject )
 {
   outputs->Clear( );
 
   if(inject) {
-    int inject_vc= RandomInt(gNumVCs-1);
+    int inject_vc= RandomInt(rc->gNumVCs-1);
     outputs->AddRange(-1, inject_vc, inject_vc);
     return;
   }
@@ -465,15 +465,15 @@ void min_dragonflynew( const Router *r, const Flit *f, int in_channel,
 
 
 //Basic adaptive routign algorithm for the dragonfly
-void ugal_dragonflynew( const Router *r, const Flit *f, int in_channel, 
+void ugal_dragonflynew( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 			OutputSet *outputs, bool inject )
 {
   //need 3 VCs for deadlock freedom
 
-  assert(gNumVCs==3);
+  assert(rc->gNumVCs==3);
   outputs->Clear( );
   if(inject) {
-    int inject_vc= RandomInt(gNumVCs-1);
+    int inject_vc= RandomInt(rc->gNumVCs-1);
     outputs->AddRange(-1, inject_vc, inject_vc);
     return;
   }

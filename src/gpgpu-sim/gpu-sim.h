@@ -43,7 +43,7 @@
 #include "addrdec.h"
 #include "gpu-cache.h"
 #include "shader.h"
-#include "ring_connection.h"
+#include "chiplet_wrapper.h"
 
 // constants for statistics printouts
 #define GPU_RSTAT_SHD_INFO 0x1
@@ -688,8 +688,8 @@ class gpgpu_sim : public gpgpu_t {
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
 
-  //Ring
-  ring* Ring;
+  //chiplet interconnection
+  ChipletInterconnection* chiplet_icnt;
   unsigned* cluster_max_remotes;
   unsigned* cluster_dynamic_index;
   std::vector<mem_fetch *> find_original_mf;

@@ -39,11 +39,17 @@
 
 #include "config_utils.hpp"
 
-Configuration *Configuration::theConfig = 0;
+typedef void* yyscan_t;
+
+int yylex_init(yyscan_t* scanner);
+int yylex_destroy(yyscan_t scanner);
+void yyset_in(FILE* in_str, yyscan_t scanner);
+void yyset_extra(Configuration* user_defined, yyscan_t scanner);
+
+int yyparse(yyscan_t scanner, Configuration* cf);
 
 Configuration::Configuration()
 {
-  theConfig = this;
   _config_file = 0;
 }
 
@@ -152,7 +158,16 @@ void Configuration::ParseFile(string const & filename)
     exit(-1);
   }
 
-  yyparse();
+  yyscan_t scanner = nullptr;
+  if (yylex_init(&scanner) != 0 || !scanner) {
+    std::cerr << "Failed to initialize lexer\n";
+    std::exit(-1);
+  }
+
+  yyset_in(_config_file, scanner);
+  yyset_extra(this, scanner);
+  yyparse(scanner, this);
+  yylex_destroy(scanner);
 
   fclose(_config_file);
   _config_file = 0;
@@ -161,7 +176,16 @@ void Configuration::ParseFile(string const & filename)
 void Configuration::ParseString(string const & str)
 {
   _config_string = str + ';';
-  yyparse();
+  yyscan_t scanner = nullptr;
+  if (yylex_init(&scanner) != 0 || !scanner) {
+    std::cerr << "Failed to initialize lexer\n";
+    std::exit(-1);
+  }
+
+  yyset_in(_config_file, scanner);
+  yyset_extra(this, scanner);
+  yyparse(scanner, this);
+  yylex_destroy(scanner);
   _config_string = "";
 }
 
@@ -192,36 +216,31 @@ void Configuration::ParseError(string const & msg, unsigned int lineno) const
   exit( -1 );
 }
 
-Configuration * Configuration::GetTheConfig()
-{
-  return theConfig;
-}
-
 //============================================================
 
-void config_error( char * msg, int lineno )
+void config_error( Configuration * cf, const char * msg, int lineno )
 {
-  Configuration::GetTheConfig( )->ParseError( msg, lineno );
+  cf->ParseError( msg, lineno );
 }
 
- void config_assign_string( char const * field, char const * value )
+ void config_assign_string( Configuration * cf, char const * field, char const * value )
 {
-  Configuration::GetTheConfig()->Assign(field, value);
+  cf->Assign(field, value);
 }
 
-void config_assign_int( char const * field, int value )
+void config_assign_int( Configuration * cf, char const * field, int value )
 {
-  Configuration::GetTheConfig()->Assign(field, value);
+  cf->Assign(field, value);
 }
 
-void config_assign_float( char const * field, double value )
+void config_assign_float( Configuration * cf, char const * field, double value )
 {
-  Configuration::GetTheConfig()->Assign(field, value);
+  cf->Assign(field, value);
 }
 
-int config_input(char * line, int max_size)
+int config_input(Configuration * cf, char * line, int max_size)
 {
-  return Configuration::GetTheConfig()->Input(line, max_size);
+  return cf->Input(line, max_size);
 }
 
 bool ParseArgs(Configuration * cf, int argc, char * * argv)

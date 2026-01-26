@@ -58,8 +58,8 @@
 //this is a hack, I can't easily get the routing talbe out of the network
 map<int, int>* global_routing_table;
 
-AnyNet::AnyNet( const Configuration &config, const string & name )
-  :  Network( config, name ){
+AnyNet::AnyNet( const Configuration &config, const string & name, RoutingContext* rc )
+  :  Network( config, name, rc){
 
   router_list.resize(2);
   _ComputeSize( config );
@@ -151,7 +151,7 @@ void AnyNet::_BuildNet( const Configuration &config ){
     router_name << "router";
     router_name << "_" <<  node ;
     _routers[node] = Router::NewRouter( config, this, router_name.str( ), 
-    					node, radix, radix );
+    					node, radix, radix, _rc );
     _timed_modules.push_back(_routers[node]);
     //add injeciton ejection channels
     map<int, pair<int,int> >::iterator nniter;
@@ -211,7 +211,7 @@ void AnyNet::RegisterRoutingFunctions() {
   gRoutingFunctionMap["min_anynet"] = &min_anynet;
 }
 
-void min_anynet( const Router *r, const Flit *f, int in_channel, 
+void min_anynet( const RoutingContext *rc, const Router *r, const Flit *f, int in_channel, 
 		 OutputSet *outputs, bool inject ){
   int out_port=-1;
   if(!inject){
@@ -220,19 +220,19 @@ void min_anynet( const Router *r, const Flit *f, int in_channel,
   }
  
 
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = rc->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd   = gReadReqEndVC;
+    vcBegin = rc->gReadReqBeginVC;
+    vcEnd   = rc->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd   = gWriteReqEndVC;
+    vcBegin = rc->gWriteReqBeginVC;
+    vcEnd   = rc->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd   = gReadReplyEndVC;
+    vcBegin = rc->gReadReplyBeginVC;
+    vcEnd   = rc->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd   = gWriteReplyEndVC;
+    vcBegin = rc->gWriteReplyBeginVC;
+    vcEnd   = rc->gWriteReplyEndVC;
   }
 
   outputs->Clear( );

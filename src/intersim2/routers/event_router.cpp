@@ -37,11 +37,11 @@
 
 EventRouter::EventRouter( const Configuration& config,
 		    Module *parent, const string & name, int id,
-		    int inputs, int outputs )
+		    int inputs, int outputs, RoutingContext* rc )
   : Router( config,
 	    parent, name,
 	    id,
-	    inputs, outputs )
+	    inputs, outputs, rc )
 {
   ostringstream module_name;
   
@@ -337,7 +337,7 @@ void EventRouter::_IncomingFlits( )
 	const OutputSet *route_set;
 	int out_vc, out_port;
 
-	cur_buf->Route( vc, _rf, this, f, input );
+	cur_buf->Route( vc, _rf, _rc, this, f, input );
 	route_set = cur_buf->GetRouteSet( vc );
 
 	if ( !route_set->GetPortVC( &out_port, &out_vc ) ) {

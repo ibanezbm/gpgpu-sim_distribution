@@ -103,6 +103,7 @@ protected:
 
   // ============ Routing ============ 
 
+  RoutingContext* _rc;
   tRoutingFunction _rf;
   bool _lookahead_routing;
   bool _noq;
@@ -292,9 +293,9 @@ protected:
 public:
 
   static TrafficManager * New(Configuration const & config, 
-			      vector<Network *> const & net);
+			      vector<Network *> const & net, InterconnectInterface* icnt_interface = nullptr, RoutingContext* rc = nullptr);
 
-  TrafficManager( const Configuration &config, const vector<Network *> & net );
+  TrafficManager( const Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface = nullptr, RoutingContext* rc = nullptr);
   virtual ~TrafficManager( );
 
   bool Run( );
@@ -307,7 +308,7 @@ public:
 
   inline int getTime() { return _time;}
   Stats * getStats(const string & name) { return _stats[name]; }
-
+  InterconnectInterface* icnt_interface;
 };
 
 template<class T>

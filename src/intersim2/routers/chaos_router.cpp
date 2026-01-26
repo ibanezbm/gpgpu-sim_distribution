@@ -37,11 +37,11 @@
 
 ChaosRouter::ChaosRouter( const Configuration& config,
 		    Module *parent, const string & name, int id,
-		    int inputs, int outputs )
+		    int inputs, int outputs, RoutingContext* rc )
   : Router( config,
 	    parent, name,
 	    id,
-	    inputs, outputs )
+	    inputs, outputs, rc )
 {
   int i;
 
@@ -152,7 +152,7 @@ void ChaosRouter::ReadInputs( )
 	  } else {
 	    _input_state[input] = filling;
 	  }
-	  _rf( this, f, input, _input_route[input], false );
+	  _rf(_rc, this, f, input, _input_route[input], false );
 	} else {
 	  cout << *f;
 	  Error( "Empty buffer received non-head flit!" );
@@ -526,7 +526,7 @@ void ChaosRouter::_OutputAdvance( )
 	mq = _input_mq_match[i];
 
 	if ( f->head ) {
-	  _rf( this, f, i, _mq_route[mq], false );
+	  _rf(_rc, this, f, i, _mq_route[mq], false );
 	  _mq_age[mq] = 0;
 
 	  if ( _multi_state[mq] == empty ) {
@@ -573,7 +573,7 @@ void ChaosRouter::_OutputAdvance( )
 	    _input_state[i] = filling;
 	    f2 = _input_frame[i].front( );
 	    // update routes
-	    _rf( this, f2, i, _input_route[i], false );
+	    _rf(_rc, this, f2, i, _input_route[i], false );
 	  }
 	  
 	  _input_output_match[i] = -1;

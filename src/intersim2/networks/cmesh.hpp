@@ -46,7 +46,7 @@
 
 class CMesh : public Network {
 public:
-  CMesh( const Configuration &config, const string & name );
+  CMesh( const Configuration &config, const string & name, RoutingContext* rc );
   int GetN() const;
   int GetK() const;
 
@@ -80,16 +80,16 @@ private:
 //
 // Routing Functions
 //
-void xy_yx_cmesh( const Router *r, const Flit *f, int in_channel, 
+void xy_yx_cmesh( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 		  OutputSet *outputs, bool inject ) ;
 
-void xy_yx_no_express_cmesh( const Router *r, const Flit *f, int in_channel, 
+void xy_yx_no_express_cmesh( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 			     OutputSet *outputs, bool inject ) ;
 
-void dor_cmesh( const Router *r, const Flit *f, int in_channel, 
+void dor_cmesh( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 		OutputSet *outputs, bool inject ) ;
 
-void dor_no_express_cmesh( const Router *r, const Flit *f, int in_channel, 
+void dor_no_express_cmesh( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 			   OutputSet *outputs, bool inject ) ;
 
 #endif

@@ -85,7 +85,7 @@ void InterconnectInterface::CreateInterconnect(unsigned n_shader, unsigned n_mem
   _n_shader = n_shader;
   _n_mem = n_mem;
 
-  InitializeRoutingMap(*_icnt_config);
+  RoutingContext* rc = InitializeRoutingMap(*_icnt_config);
 
   gPrintActivity = (_icnt_config->GetInt("print_activity") > 0);
   gTrace = (_icnt_config->GetInt("viewer_trace") > 0);
@@ -109,12 +109,11 @@ void InterconnectInterface::CreateInterconnect(unsigned n_shader, unsigned n_mem
   for (int i = 0; i < _subnets; ++i) {
     ostringstream name;
     name << "network_" << i;
-    _net[i] = Network::New( *_icnt_config, name.str() );
+    _net[i] = Network::New( *_icnt_config, name.str(), rc);
   }
 
   assert(_icnt_config->GetStr("sim_type") == "gpgpusim");
-  _traffic_manager = static_cast<GPUTrafficManager*>(TrafficManager::New( *_icnt_config, _net )) ;
-
+  _traffic_manager = static_cast<GPUTrafficManager*>(TrafficManager::New( *_icnt_config, _net, this, rc)) ;
   _flit_size = _icnt_config->GetInt( "flit_size" );
 
   // Config for interface buffers

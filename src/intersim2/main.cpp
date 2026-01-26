@@ -62,7 +62,7 @@
 //////////////////////
 
 // Interconnect Interface instance
-InterconnectInterface *g_icnt_interface;
+InterconnectInterface **g_icnt_interface = nullptr;
 
 /* the current traffic manager instance */
 TrafficManager * trafficManager = NULL;
@@ -82,12 +82,12 @@ Stats * GetStats(const std::string & name) {
 }
 #else
 int GetSimTime() {
-  return g_icnt_interface->GetIcntTime();
+  return g_icnt_interface[0]->GetIcntTime();
 }
 
 class Stats;
 Stats * GetStats(const std::string & name) {
-  Stats* test =  g_icnt_interface->GetIcntStats(name);
+  Stats* test =  g_icnt_interface[1]->GetIcntStats(name);
   if(test == 0){
     cout<<"warning statistics "<<name<<" not found"<<endl;
   }
@@ -117,6 +117,7 @@ ostream * gWatchOut;
 bool Simulate( BookSimConfig const & config )
 {
   vector<Network *> net;
+  RoutingContext* rc = InitializeRoutingMap(config);
 
   int subnets = config.GetInt("subnets");
   /*To include a new network, must register the network here
@@ -126,7 +127,7 @@ bool Simulate( BookSimConfig const & config )
   for (int i = 0; i < subnets; ++i) {
     ostringstream name;
     name << "network_" << i;
-    net[i] = Network::New( config, name.str() );
+    net[i] = Network::New( config, name.str(), rc);
   }
 
   /*tcc and characterize are legacy
@@ -134,7 +135,7 @@ bool Simulate( BookSimConfig const & config )
    */
 
   assert(trafficManager == NULL);
-  trafficManager = TrafficManager::New( config, net ) ;
+  trafficManager = TrafficManager::New( config, net, nullptr, rc);
 
   /*Start the simulation run
    */

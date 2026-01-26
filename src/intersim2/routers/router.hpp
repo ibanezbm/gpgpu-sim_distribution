@@ -37,6 +37,7 @@
 #include "flitchannel.hpp"
 #include "channel.hpp"
 #include "config_utils.hpp"
+#include "routefunc.hpp"
 
 typedef Channel<Credit> CreditChannel;
 
@@ -88,17 +89,17 @@ protected:
   vector<int> _crossbar_conflict_stalls;
 #endif
 
+  RoutingContext* _rc;
   virtual void _InternalStep() = 0;
 
 public:
   Router( const Configuration& config,
 	  Module *parent, const string & name, int id,
-	  int inputs, int outputs );
+	  int inputs, int outputs, RoutingContext* rc );
 
   static Router *NewRouter( const Configuration& config,
 			    Module *parent, const string & name, int id,
-			    int inputs, int outputs );
-
+			    int inputs, int outputs, RoutingContext* rc );
   virtual void AddInputChannel( FlitChannel *channel, CreditChannel *backchannel );
   virtual void AddOutputChannel( FlitChannel *channel, CreditChannel *backchannel );
  

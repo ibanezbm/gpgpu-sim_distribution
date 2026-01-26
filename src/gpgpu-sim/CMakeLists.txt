@@ -8,6 +8,8 @@ list(APPEND gpgpusim_SRC addrdec.cc
     hashing.cc
     histogram.cc
     icnt_wrapper.cc
+    chiplet_wrapper.cc
+    ring_connection.cc
     l2cache.cc
     local_interconnect.cc
     mem_fetch.cc

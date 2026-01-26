@@ -1,16 +1,27 @@
+%option reentrant
+%option bison-bridge
+%option noyywrap
 %{
-
+class Configuration;
 #include "y.tab.h"
+
+#include <cstring>
+#include <cstdlib>
 
 static unsigned int lineno = 1;
 
-void config_error(char * msg, int lineno);
-void yyerror(char * msg);
+void config_error(Configuration* cf, const char * msg, int lineno);
+void yyerror(Configuration* cf, char * msg);
 
-extern int config_input(char *, int);
+extern int config_input(Configuration* cf, char *, int);
+#define YY_EXTRA_TYPE Configuration*
+
 #undef YY_INPUT
-#define YY_INPUT(b, r, ms) (r = config_input(b, ms))
-
+#define YY_INPUT(b, r, ms)                                   \
+  do {                                                       \
+    Configuration* cfg = yyget_extra(yyscanner);             \
+    (r) = config_input(cfg, (b), (ms));                      \
+  } while (0)
 %}
 
 Digit [0-9]
@@ -29,26 +40,22 @@ StrConst [A-Za-z_\-/\.][A-Za-z0-9_\-/\.\+(\{\,)\}]*
 
    /* Commands */
 
-\{[A-Za-z0-9_\-\.(\{\,)\}]+(\,[A-Za-z0-9_\-\.(\{\,)\}]+)*\} { yylval.name = strdup( yytext ); return STR; }
+\{[A-Za-z0-9_\-\.(\{\,)\}]+(\,[A-Za-z0-9_\-\.(\{\,)\}]+)*\} { yylval_param->name = strdup( yytext ); return STR; }
 
--?[0-9]+     { yylval.num = atoi( yytext ); return NUM; }
+-?[0-9]+     { yylval_param->num = atoi( yytext ); return NUM; }
 
--?[0-9]*\.[0-9]+ { yylval.fnum = atof( yytext ); return FNUM; }
+-?[0-9]*\.[0-9]+ { yylval_param->fnum = atof( yytext ); return FNUM; }
 
--?{DblConst}  { yylval.fnum = atof( yytext ); return FNUM;}
+-?{DblConst}  { yylval_param->fnum = atof( yytext ); return FNUM;}
 
-{StrConst} { yylval.name = strdup( yytext ); return STR; }
+{StrConst} { yylval_param->name = strdup( yytext ); return STR; }
 
 .          { return yytext[0]; }
 
 %%
 
-void yyerror( char * msg )
+void yyerror(yyscan_t scanner, Configuration* cf, const char* msg)
 {
-  config_error( msg, lineno );
-}
-
-int yywrap()
-{
-  return 1;
+  (void)scanner;
+  config_error(cf, msg, lineno);
 }

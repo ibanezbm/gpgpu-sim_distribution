@@ -34,6 +34,7 @@
 #include "outputset.hpp"
 #include "routefunc.hpp"
 #include "config_utils.hpp"
+#include "module.hpp"
 
 class VC : public Module {
 public:
@@ -120,7 +121,7 @@ public:
   {
     return _pri;
   }
-  void Route( tRoutingFunction rf, const Router* router, const Flit* f, int in_channel );
+  void Route( tRoutingFunction rf, RoutingContext* rc, const Router* router, const Flit* f, int in_channel );
 
   inline int GetOccupancy() const
   {

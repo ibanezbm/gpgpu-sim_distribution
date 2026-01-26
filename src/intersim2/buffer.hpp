@@ -121,9 +121,9 @@ public:
     return _vc[vc]->GetPriority( );
   }
 
-  inline void Route( int vc, tRoutingFunction rf, const Router* router, const Flit* f, int in_channel )
+  inline void Route( int vc, tRoutingFunction rf, RoutingContext* rc, const Router* router, const Flit* f, int in_channel )
   {
-    _vc[vc]->Route(rf, router, f, in_channel);
+    _vc[vc]->Route(rf, rc, router, f, in_channel);
   }
 
   // ==== Debug functions ====

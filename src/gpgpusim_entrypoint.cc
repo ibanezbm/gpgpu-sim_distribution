@@ -35,6 +35,7 @@
 #include "cuda-sim/ptx_parser.h"
 #include "gpgpu-sim/gpu-sim.h"
 #include "gpgpu-sim/icnt_wrapper.h"
+#include "gpgpu-sim/chiplet_wrapper.h"
 #include "option_parser.h"
 #include "stream_manager.h"
 
@@ -333,6 +334,7 @@ gpgpu_sim *gpgpu_context::gpgpu_ptx_sim_init_perf() {
   func_sim->ptx_opcocde_latency_options(opp);
 
   icnt_reg_options(opp);
+  chiplet_reg_options(opp);
   the_gpgpusim->g_the_gpu_config = new gpgpu_sim_config(this);
   the_gpgpusim->g_the_gpu_config->reg_options(
       opp);  // register GPU microrachitecture options

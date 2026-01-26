@@ -40,8 +40,8 @@
  //#include "iq_router.hpp"
 
 
-KNCube::KNCube( const Configuration &config, const string & name, bool mesh ) :
-Network( config, name )
+KNCube::KNCube( const Configuration &config, const string & name, bool mesh, RoutingContext* rc ) :
+Network( config, name, rc )
 {
   _mesh = mesh;
 
@@ -93,7 +93,7 @@ void KNCube::_BuildNet( const Configuration &config )
     }
 
     _routers[node] = Router::NewRouter( config, this, router_name.str( ), 
-					node, 2*_n + 1, 2*_n + 1 );
+					node, 2*_n + 1, 2*_n + 1, _rc);
     _timed_modules.push_back(_routers[node]);
 
     router_name.str("");

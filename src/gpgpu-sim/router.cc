@@ -94,8 +94,9 @@ bool router::has_buffer_request(unsigned input, unsigned output, unsigned int si
     return this->buffers[std::make_tuple(true, true, input, output)]->size() < 64;
 }
 
-mem_fetch* router::top_reply(unsigned module_number, unsigned long cycle, bool first_buffer){
-    
+mem_fetch* router::top_reply(unsigned module_number, unsigned long cycle){
+    bool first_buffer = this->first_buffer;
+    this->first_buffer ? this->first_buffer = false : this->first_buffer = true;
     mem_fetch* mf = NULL;
     for (auto& par : buffers) {
         if(module_number == std::get<3>(par.first) && 
@@ -114,8 +115,9 @@ mem_fetch* router::top_reply(unsigned module_number, unsigned long cycle, bool f
     return mf;
 }
 
-mem_fetch* router::top_request(unsigned module_number, unsigned long cycle, bool first_buffer){
-    
+mem_fetch* router::top_request(unsigned module_number, unsigned long cycle){
+    bool first_buffer = this->first_buffer;
+    this->first_buffer ? this->first_buffer = false : this->first_buffer = true;
     mem_fetch* mf = NULL;
     for (auto& par : buffers) {
         if(module_number == std::get<3>(par.first) && 
@@ -135,8 +137,9 @@ mem_fetch* router::top_request(unsigned module_number, unsigned long cycle, bool
     return mf;
 }
 
-void router::pop_reply(unsigned module_number, unsigned long cycle, bool first_buffer){
-    
+void router::pop_reply(unsigned module_number, unsigned long cycle){
+    bool first_buffer;
+    this->first_buffer ? first_buffer = false : first_buffer = true;
     mem_fetch* mf = NULL;
     for (auto& par : buffers) {
         if(module_number == std::get<3>(par.first) &&
@@ -153,8 +156,9 @@ void router::pop_reply(unsigned module_number, unsigned long cycle, bool first_b
     }
 }
 
-void router::pop_request(unsigned module_number, unsigned long cycle, bool first_buffer){
-    
+void router::pop_request(unsigned module_number, unsigned long cycle){
+    bool first_buffer;
+    this->first_buffer ? first_buffer = false : first_buffer = true;
     mem_fetch* mf = NULL;
     for (auto& par : buffers) {
         if(module_number == std::get<3>(par.first) &&

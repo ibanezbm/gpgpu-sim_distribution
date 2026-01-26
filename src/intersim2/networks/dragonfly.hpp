@@ -54,7 +54,7 @@ class DragonFlyNew : public Network {
 
  
 public:
-  DragonFlyNew( const Configuration &config, const string & name );
+  DragonFlyNew( const Configuration &config, const string & name, RoutingContext* rc );
 
   int GetN( ) const;
   int GetK( ) const;
@@ -66,9 +66,9 @@ public:
 };
 int dragonfly_port(int rID, int source, int dest);
 
-void ugal_dragonflynew( const Router *r, const Flit *f, int in_channel,
+void ugal_dragonflynew( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel,
 		       OutputSet *outputs, bool inject );
-void min_dragonflynew( const Router *r, const Flit *f, int in_channel, 
+void min_dragonflynew( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 		       OutputSet *outputs, bool inject );
 
 #endif 

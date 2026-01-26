@@ -29,6 +29,7 @@
 #define _FLY_HPP_
 
 #include "network.hpp"
+#include "routefunc.hpp"
 
 class KNFly : public Network {
 
@@ -42,7 +43,7 @@ class KNFly : public Network {
   int _InChannel( int stage, int addr, int port ) const;
  
 public:
-  KNFly( const Configuration &config, const string & name );
+  KNFly( const Configuration &config, const string & name, RoutingContext* rc );
 
   int GetN( ) const;
   int GetK( ) const;

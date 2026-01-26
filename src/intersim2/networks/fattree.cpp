@@ -51,12 +51,13 @@
 
 #include "fattree.hpp"
 #include "misc_utils.hpp"
+#include "routefunc.hpp"
 
 
  //#define FATTREE_DEBUG
 
-FatTree::FatTree( const Configuration& config,const string & name )
-  : Network( config ,name)
+FatTree::FatTree( const Configuration& config,const string & name, RoutingContext* rc )
+  : Network( config ,name, rc)
 {
   
 
@@ -121,7 +122,7 @@ void FatTree::_BuildNet( const Configuration& config )
       name.str("");
       name << "router_level" << level << "_" << pos;
       Router * r = Router::NewRouter( config, this, name.str( ), id,
-				      degree, degree );
+				      degree, degree , _rc);
       _Router( level, pos ) = r;
       _timed_modules.push_back(r);
     }

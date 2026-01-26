@@ -54,40 +54,26 @@
 
 map<string, tRoutingFunction> gRoutingFunctionMap;
 
-/* Global information used by routing functions */
-
-int gNumVCs;
-
-/* Add more functions here
- *
- */
-
-// ============================================================
-//  Balfour-Schultz
-int gReadReqBeginVC, gReadReqEndVC;
-int gWriteReqBeginVC, gWriteReqEndVC;
-int gReadReplyBeginVC, gReadReplyEndVC;
-int gWriteReplyBeginVC, gWriteReplyEndVC;
 
 // ============================================================
 //  QTree: Nearest Common Ancestor
 // ===
-void qtree_nca( const Router *r, const Flit *f,
+void qtree_nca( const RoutingContext* context, const Router *r, const Flit *f,
 		int in_channel, OutputSet* outputs, bool inject)
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -123,22 +109,22 @@ void qtree_nca( const Router *r, const Flit *f,
 // ============================================================
 //  Tree4: Nearest Common Ancestor w/ Adaptive Routing Up
 // ===
-void tree4_anca( const Router *r, const Flit *f,
+void tree4_anca( const RoutingContext* context, const Router *r, const Flit *f,
 		 int in_channel, OutputSet* outputs, bool inject)
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -193,22 +179,22 @@ void tree4_anca( const Router *r, const Flit *f,
 // ============================================================
 //  Tree4: Nearest Common Ancestor w/ Random Routing Up
 // ===
-void tree4_nca( const Router *r, const Flit *f,
+void tree4_nca( const RoutingContext* context, const Router *r, const Flit *f,
 		int in_channel, OutputSet* outputs, bool inject)
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -256,22 +242,22 @@ void tree4_nca( const Router *r, const Flit *f,
 // ============================================================
 //  FATTREE: Nearest Common Ancestor w/ Random  Routing Up
 // ===
-void fattree_nca( const Router *r, const Flit *f,
+void fattree_nca( const RoutingContext* context, const Router *r, const Flit *f,
                int in_channel, OutputSet* outputs, bool inject)
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -320,23 +306,23 @@ void fattree_nca( const Router *r, const Flit *f,
 // ============================================================
 //  FATTREE: Nearest Common Ancestor w/ Adaptive Routing Up
 // ===
-void fattree_anca( const Router *r, const Flit *f,
+void fattree_anca(const RoutingContext* context, const Router *r, const Flit *f,
                 int in_channel, OutputSet* outputs, bool inject)
 {
 
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -401,22 +387,22 @@ void fattree_anca( const Router *r, const Flit *f,
 
 int dor_next_mesh( int cur, int dest, bool descending = false );
 
-void adaptive_xy_yx_mesh( const Router *r, const Flit *f, 
+void adaptive_xy_yx_mesh(const RoutingContext* context, const Router *r, const Flit *f, 
 		 int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -473,22 +459,22 @@ void adaptive_xy_yx_mesh( const Router *r, const Flit *f,
   
 }
 
-void xy_yx_mesh( const Router *r, const Flit *f, 
+void xy_yx_mesh(const RoutingContext* context, const Router *r, const Flit *f, 
 		 int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -640,23 +626,23 @@ void dor_next_torus( int cur, int dest, int in_port,
 
 //=============================================================
 
-void dim_order_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void dim_order_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
   int out_port = inject ? -1 : dor_next_mesh( r->GetID( ), f->dest );
   
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -679,23 +665,23 @@ void dim_order_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *
 
 //=============================================================
 
-void dim_order_ni_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void dim_order_ni_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
   int out_port = inject ? -1 : dor_next_mesh( r->GetID( ), f->dest );
   
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -729,23 +715,23 @@ void dim_order_ni_mesh( const Router *r, const Flit *f, int in_channel, OutputSe
 
 //=============================================================
 
-void dim_order_pni_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void dim_order_pni_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
   int out_port = inject ? -1 : dor_next_mesh( r->GetID(), f->dest );
   
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -811,21 +797,21 @@ int rand_min_intr_mesh( int src, int dest )
 
 //=============================================================
 
-void romm_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void romm_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -872,21 +858,21 @@ void romm_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outpu
 
 //=============================================================
 
-void romm_ni_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void romm_ni_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -929,21 +915,21 @@ void romm_ni_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *ou
 
 //=============================================================
 
-void min_adapt_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void min_adapt_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1029,21 +1015,21 @@ void min_adapt_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *
 
 //=============================================================
 
-void planar_adapt_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void planar_adapt_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1273,21 +1259,21 @@ void limited_adapt_mesh( const Router *r, const Flit *f, int in_channel, OutputS
 */
 //=============================================================
 
-void valiant_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void valiant_mesh( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1334,21 +1320,21 @@ void valiant_mesh( const Router *r, const Flit *f, int in_channel, OutputSet *ou
 
 //=============================================================
 
-void valiant_torus( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void valiant_torus( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1412,22 +1398,22 @@ void valiant_torus( const Router *r, const Flit *f, int in_channel, OutputSet *o
 
 //=============================================================
 
-void valiant_ni_torus( const Router *r, const Flit *f, int in_channel, 
+void valiant_ni_torus( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, 
 		       OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1514,22 +1500,22 @@ void valiant_ni_torus( const Router *r, const Flit *f, int in_channel,
 
 //=============================================================
 
-void dim_order_torus( const Router *r, const Flit *f, int in_channel, 
+void dim_order_torus( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, 
 		      OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1582,22 +1568,22 @@ void dim_order_torus( const Router *r, const Flit *f, int in_channel,
 
 //=============================================================
 
-void dim_order_ni_torus( const Router *r, const Flit *f, int in_channel, 
+void dim_order_ni_torus( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, 
 			 OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1647,22 +1633,22 @@ void dim_order_ni_torus( const Router *r, const Flit *f, int in_channel,
 
 //=============================================================
 
-void dim_order_bal_torus( const Router *r, const Flit *f, int in_channel, 
+void dim_order_bal_torus( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, 
 			  OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1715,21 +1701,21 @@ void dim_order_bal_torus( const Router *r, const Flit *f, int in_channel,
 
 //=============================================================
 
-void min_adapt_torus( const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
+void min_adapt_torus( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1795,22 +1781,22 @@ void min_adapt_torus( const Router *r, const Flit *f, int in_channel, OutputSet 
 
 //=============================================================
 
-void dest_tag_fly( const Router *r, const Flit *f, int in_channel, 
+void dest_tag_fly( const RoutingContext* context, const Router *r, const Flit *f, int in_channel, 
 		   OutputSet *outputs, bool inject )
 {
-  int vcBegin = 0, vcEnd = gNumVCs-1;
+  int vcBegin = 0, vcEnd = context->gNumVCs-1;
   if ( f->type == Flit::READ_REQUEST ) {
-    vcBegin = gReadReqBeginVC;
-    vcEnd = gReadReqEndVC;
+    vcBegin = context->gReadReqBeginVC;
+    vcEnd = context->gReadReqEndVC;
   } else if ( f->type == Flit::WRITE_REQUEST ) {
-    vcBegin = gWriteReqBeginVC;
-    vcEnd = gWriteReqEndVC;
+    vcBegin = context->gWriteReqBeginVC;
+    vcEnd = context->gWriteReqEndVC;
   } else if ( f->type ==  Flit::READ_REPLY ) {
-    vcBegin = gReadReplyBeginVC;
-    vcEnd = gReadReplyEndVC;
+    vcBegin = context->gReadReplyBeginVC;
+    vcEnd = context->gReadReplyEndVC;
   } else if ( f->type ==  Flit::WRITE_REPLY ) {
-    vcBegin = gWriteReplyBeginVC;
-    vcEnd = gWriteReplyEndVC;
+    vcBegin = context->gWriteReplyBeginVC;
+    vcEnd = context->gWriteReplyEndVC;
   }
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
@@ -1842,7 +1828,7 @@ void dest_tag_fly( const Router *r, const Flit *f, int in_channel,
 
 //=============================================================
 
-void chaos_torus( const Router *r, const Flit *f, 
+void chaos_torus( const RoutingContext* context, const Router *r, const Flit *f, 
 		  int in_channel, OutputSet *outputs, bool inject )
 {
   outputs->Clear( );
@@ -1881,7 +1867,7 @@ void chaos_torus( const Router *r, const Flit *f,
 
 //=============================================================
 
-void chaos_mesh( const Router *r, const Flit *f, 
+void chaos_mesh( const RoutingContext* context, const Router *r, const Flit *f, 
 		  int in_channel, OutputSet *outputs, bool inject )
 {
   outputs->Clear( );
@@ -1914,45 +1900,46 @@ void chaos_mesh( const Router *r, const Flit *f,
 
 //=============================================================
 
-void InitializeRoutingMap( const Configuration & config )
+RoutingContext* InitializeRoutingMap(const Configuration & config )
 {
 
-  gNumVCs = config.GetInt( "num_vcs" );
+  RoutingContext* context = new RoutingContext();
+  context->gNumVCs = config.GetInt( "num_vcs" );
 
   //
   // traffic class partitions
   //
-  gReadReqBeginVC    = config.GetInt("read_request_begin_vc");
-  if(gReadReqBeginVC < 0) {
-    gReadReqBeginVC = 0;
+  context->gReadReqBeginVC    = config.GetInt("read_request_begin_vc");
+  if(context->gReadReqBeginVC < 0) {
+    context->gReadReqBeginVC = 0;
   }
-  gReadReqEndVC      = config.GetInt("read_request_end_vc");
-  if(gReadReqEndVC < 0) {
-    gReadReqEndVC = gNumVCs / 2 - 1;
+  context->gReadReqEndVC      = config.GetInt("read_request_end_vc");
+  if(context->gReadReqEndVC < 0) {
+    context->gReadReqEndVC = context->gNumVCs / 2 - 1;
   }
-  gWriteReqBeginVC   = config.GetInt("write_request_begin_vc");
-  if(gWriteReqBeginVC < 0) {
-    gWriteReqBeginVC = 0;
+  context->gWriteReqBeginVC   = config.GetInt("write_request_begin_vc");
+  if(context->gWriteReqBeginVC < 0) {
+    context->gWriteReqBeginVC = 0;
   }
-  gWriteReqEndVC     = config.GetInt("write_request_end_vc");
-  if(gWriteReqEndVC < 0) {
-    gWriteReqEndVC = gNumVCs / 2 - 1;
+  context->gWriteReqEndVC     = config.GetInt("write_request_end_vc");
+  if(context->gWriteReqEndVC < 0) {
+    context->gWriteReqEndVC = context->gNumVCs / 2 - 1;
   }
-  gReadReplyBeginVC  = config.GetInt("read_reply_begin_vc");
-  if(gReadReplyBeginVC < 0) {
-    gReadReplyBeginVC = gNumVCs / 2;
+  context->gReadReplyBeginVC  = config.GetInt("read_reply_begin_vc");
+  if(context->gReadReplyBeginVC < 0) {
+    context->gReadReplyBeginVC = context->gNumVCs / 2;
   }
-  gReadReplyEndVC    = config.GetInt("read_reply_end_vc");
-  if(gReadReplyEndVC < 0) {
-    gReadReplyEndVC = gNumVCs - 1;
+  context->gReadReplyEndVC    = config.GetInt("read_reply_end_vc");
+  if(context->gReadReplyEndVC < 0) {
+    context->gReadReplyEndVC = context->gNumVCs - 1;
   }
-  gWriteReplyBeginVC = config.GetInt("write_reply_begin_vc");
-  if(gWriteReplyBeginVC < 0) {
-    gWriteReplyBeginVC = gNumVCs / 2;
+  context->gWriteReplyBeginVC = config.GetInt("write_reply_begin_vc");
+  if(context->gWriteReplyBeginVC < 0) {
+    context->gWriteReplyBeginVC = context->gNumVCs / 2;
   }
-  gWriteReplyEndVC   = config.GetInt("write_reply_end_vc");
-  if(gWriteReplyEndVC < 0) {
-    gWriteReplyEndVC = gNumVCs - 1;
+  context->gWriteReplyEndVC   = config.GetInt("write_reply_end_vc");
+  if(context->gWriteReplyEndVC < 0) {
+    context->gWriteReplyEndVC = context->gNumVCs - 1;
   }
 
   /* Register routing functions here */
@@ -1996,4 +1983,6 @@ void InitializeRoutingMap( const Configuration & config )
 
   gRoutingFunctionMap["chaos_mesh"]  = &chaos_mesh;
   gRoutingFunctionMap["chaos_torus"] = &chaos_torus;
+
+  return context;
 }

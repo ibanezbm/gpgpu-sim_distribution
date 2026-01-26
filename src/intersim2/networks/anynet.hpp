@@ -53,7 +53,7 @@ class AnyNet : public Network {
   void route(int r_start);
 
 public:
-  AnyNet( const Configuration &config, const string & name );
+  AnyNet( const Configuration &config, const string & name, RoutingContext* rc );
   ~AnyNet();
 
   int GetN( ) const{ return -1;}
@@ -64,6 +64,6 @@ public:
   void InsertRandomFaults( const Configuration &config ){}
 };
 
-void min_anynet( const Router *r, const Flit *f, int in_channel, 
+void min_anynet( const RoutingContext* rc, const Router *r, const Flit *f, int in_channel, 
 		      OutputSet *outputs, bool inject );
 #endif

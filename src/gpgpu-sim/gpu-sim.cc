@@ -47,6 +47,7 @@
 #include "gpu-cache.h"
 #include "gpu-misc.h"
 #include "icnt_wrapper.h"
+#include "chiplet_wrapper.h"
 #include "l2cache.h"
 #include "shader.h"
 #include "stat-tool.h"
@@ -1081,8 +1082,8 @@ gpgpu_sim::gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx)
     cluster_max_remotes[j] = num_cluster/number_of_networks;
     cluster_dynamic_index[j] = j;
   }
-  
-  Ring = new ring(number_of_networks, config.icnt_freq);
+
+  chiplet_icnt = chiplet_wrapper_init(number_of_networks, config.icnt_freq);
   traffic_information["ring_request_total_bytes"] = 0;
   traffic_information["ring_reply_total_bytes"] = 0;
   traffic_information["local_request_total_bytes"] = 0;
@@ -1318,8 +1319,9 @@ void gpgpu_sim::print_stats(unsigned long long streamID) {
     printf(
         "----------------------------Interconnect-DETAILS----------------------"
         "----------\n");
-    Ring->print_stats();
+    chiplet_icnt->print_stats();
     for(unsigned int j = 0; j < m_shader_config->n_chiplet; j++){
+      printf("----------Interconnection number %d----------\n", j);
       icnt_display_stats[j](j);
       icnt_display_overall_stats[j](j);
     }
@@ -1673,13 +1675,13 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   printf("ring_reply_total_bytes = %lld\n",traffic_information["ring_reply_total_bytes"]);
   printf("local_request_total_bytes = %lld\n",traffic_information["local_request_total_bytes"]);
   printf("local_reply_total_bytes = %lld\n",traffic_information["local_reply_total_bytes"]);
-  printf("total_cycles_icnt = %lld\n", this->Ring->cycles);
+  printf("total_cycles_icnt = %lld\n", this->chiplet_icnt->cycles);
   printf("frecuence_icnt = %f\n", this->m_config.icnt_freq);
-  printf("seconds_icnt = %f\n", this->Ring->cycles/this->m_config.icnt_freq);
-  printf("ring_request_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_request_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
-  printf("ring_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_reply_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
-  printf("local_request_total_bytes/s (MB/s) = %f\n",(traffic_information["local_request_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
-  printf("local_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["local_reply_total_bytes"]/(this->Ring->cycles/this->m_config.icnt_freq))/1000000);
+  printf("seconds_icnt = %f\n", this->chiplet_icnt->cycles/this->m_config.icnt_freq);
+  printf("ring_request_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_request_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
+  printf("ring_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_reply_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
+  printf("local_request_total_bytes/s (MB/s) = %f\n",(traffic_information["local_request_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
+  printf("local_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["local_reply_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
 
   if (m_config.gpgpu_cflog_interval != 0) {
     spill_log_to_file(stdout, 1, gpu_sim_cycle);
@@ -2097,13 +2099,13 @@ void gpgpu_sim::cycle() {
           }
         }else{
           //ring
-          if (Ring->has_buffer_reply(m_memory_sub_partition[i]->get_chiplet(), mf->get_chiplet(), response_size)) {
+          if (chiplet_icnt->has_buffer_reply(m_memory_sub_partition[i]->get_chiplet(), mf->get_chiplet(), response_size)) {
             mf->set_return_timestamp(gpu_sim_cycle + gpu_tot_sim_cycle);
             mf->set_status(IN_ICNT_TO_SHADER, gpu_sim_cycle + gpu_tot_sim_cycle);
             if(mf->get_pc()!=m_config.get_remote_pc() || !mf->remote){
               traffic_information["ring_reply_total_bytes"] += mf->size();
               traffic_information["ring_reply_actual_bytes"] += mf->size();
-              Ring->push_reply(m_memory_sub_partition[i]->get_chiplet(), mf->get_chiplet(), mf,
+              chiplet_icnt->push_reply(m_memory_sub_partition[i]->get_chiplet(), mf->get_chiplet(), mf,
                         response_size, gpu_sim_cycle + gpu_tot_sim_cycle);
             }
             m_memory_sub_partition[i]->pop();
@@ -2171,12 +2173,12 @@ void gpgpu_sim::cycle() {
       }
 
       unsigned mem_chiplet = m_memory_sub_partition[i]->get_chiplet();
-      mem_fetch *mf = Ring->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+      mem_fetch *mf = chiplet_icnt->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
       if (mf != NULL){
         if(m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet() != mem_chiplet && 
-        Ring->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(),0)){
-          Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
-          Ring->push_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(), mf, 
+        chiplet_icnt->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(),0)){
+          chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+          chiplet_icnt->push_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(), mf, 
                             mf->get_is_write() ? mf->get_ctrl_size() : mf->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
          
         }else if (mf->get_sub_partition_id() == i){
@@ -2188,7 +2190,7 @@ void gpgpu_sim::cycle() {
           if (mf->get_access_type() != INST_ACC_R && !mf->get_is_write() &&
             !mf->isatomic()) {
               if (mf->get_type() == TO_SM && mf->get_pc()== m_config.get_remote_pc()){
-                Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+                chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
                 unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()];
                 unsigned finded = false;
                 if(!finded){
@@ -2202,7 +2204,7 @@ void gpgpu_sim::cycle() {
               }else{
                 if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
                   m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
-                  Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+                  chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
                   push = true;
                 }
               }
@@ -2210,18 +2212,18 @@ void gpgpu_sim::cycle() {
             if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
               m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
               push = true;
-              Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, true);
+              chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
             }
           }
         }
       }
 
-      mem_fetch *mf2 = Ring->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+      mem_fetch *mf2 = chiplet_icnt->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
       if (mf2 != NULL){
         if(m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet() != mem_chiplet &&
-        Ring->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),0)){
-          Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
-          Ring->push_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),
+        chiplet_icnt->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),0)){
+          chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+          chiplet_icnt->push_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),
            mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
         
         }else if (mf2->get_sub_partition_id() == i){
@@ -2233,7 +2235,7 @@ void gpgpu_sim::cycle() {
           if (mf2->get_access_type() != INST_ACC_R && !mf2->get_is_write() &&
           !mf2->isatomic()) {
               if (mf2->get_type() == TO_SM && mf2->get_pc()== m_config.get_remote_pc()){
-                Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+                chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
                 unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()];
                 unsigned finded = false;
                 if(!finded){
@@ -2246,14 +2248,14 @@ void gpgpu_sim::cycle() {
                 m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf2, m_config.get_remote_pc());
               }else{
                 if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
-                  Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+                  chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
                   m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
                   push = true;
                 }
               }
           }else{
             if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
-              Ring->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle, false);
+              chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
               m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
               push = true;
             }
@@ -2278,7 +2280,7 @@ void gpgpu_sim::cycle() {
   if (clock_mask & ICNT) {
     for(unsigned i = 0; i < m_config.m_shader_config.n_chiplet; i++){
       icnt_transfer[i](i);
-      Ring->cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
+      chiplet_icnt->step(gpu_sim_cycle + gpu_tot_sim_cycle);
     }
   }
 

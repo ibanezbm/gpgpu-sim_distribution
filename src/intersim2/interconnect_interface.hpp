@@ -41,6 +41,7 @@ class GPUTrafficManager;
 class IntersimConfig;
 class Network;
 class Stats;
+class RoutingContext;
 
 //TODO: fixed_lat_icnt, add class support? support for signle network
 

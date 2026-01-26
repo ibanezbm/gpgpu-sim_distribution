@@ -52,8 +52,8 @@
 #include "tree4.hpp"
 #include "misc_utils.hpp"
 
-Tree4::Tree4( const Configuration& config, const string & name )
-: Network ( config, name )
+Tree4::Tree4( const Configuration& config, const string & name, RoutingContext* rc )
+: Network ( config, name, rc )
 {
   _ComputeSize( config );
   _Alloc( );
@@ -107,7 +107,7 @@ void Tree4::_BuildNet( const Configuration& config )
       name << "router_" << h << "_" << pos;
       id = h * powi( _k, _n-1 ) + pos;
       Router * r = Router::NewRouter( config, this, name.str( ),
-				      id, degree, degree );
+				      id, degree, degree, _rc );
       _Router( h, pos ) = r;
       _timed_modules.push_back(r);
     }

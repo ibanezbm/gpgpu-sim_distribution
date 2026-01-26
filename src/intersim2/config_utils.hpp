@@ -35,10 +35,7 @@
 #include<map>
 #include<vector>
 
-int yyparse();
-
 class Configuration {
-  static Configuration * theConfig;
   FILE * _config_file;
   string _config_string;
 
@@ -82,8 +79,6 @@ public:
     return _float_map;
   }
 
-  static Configuration * GetTheConfig();
-
 };
 
 bool ParseArgs(Configuration * cf, int argc, char **argv);
@@ -91,5 +86,7 @@ bool ParseArgs(Configuration * cf, int argc, char **argv);
 vector<string> tokenize_str(string const & data);
 vector<int> tokenize_int(string const & data);
 vector<double> tokenize_float(string const & data);
+
+int yyparse(Configuration* cf);
 
 #endif

@@ -34,8 +34,8 @@
 #include "globals.hpp"
 
 
-GPUTrafficManager::GPUTrafficManager( const Configuration &config, const vector<Network *> &net)
-:TrafficManager(config, net)
+GPUTrafficManager::GPUTrafficManager( const Configuration &config, const vector<Network *> &net, InterconnectInterface* icnt_interface, RoutingContext* rc)
+:TrafficManager(config, net, icnt_interface, rc)
 {
   // The total simulations equal to number of kernels
   _total_sims = 0;
@@ -357,11 +357,11 @@ void GPUTrafficManager::_Step()
           << " from VC " << f->vc
           << "." << endl;
         }
-        g_icnt_interface->WriteOutBuffer(subnet, n, f);
+        icnt_interface->WriteOutBuffer(subnet, n, f);
       }
       
-      g_icnt_interface->Transfer2BoundaryBuffer(subnet, n);
-      Flit* const ejected_flit = g_icnt_interface->GetEjectedFlit(subnet, n);
+      icnt_interface->Transfer2BoundaryBuffer(subnet, n);
+      Flit* const ejected_flit = icnt_interface->GetEjectedFlit(subnet, n);
       if (ejected_flit) {
         if(ejected_flit->head)
           assert(ejected_flit->dest == n);
@@ -457,7 +457,7 @@ void GPUTrafficManager::_Step()
         if(cf->head && cf->vc == -1) { // Find first available VC
           
           OutputSet route_set;
-          _rf(NULL, cf, -1, &route_set, true);
+          _rf(_rc, NULL, cf, -1, &route_set, true);
           set<OutputSet::sSetElement> const & os = route_set.GetSet();
           assert(os.size() == 1);
           OutputSet::sSetElement const & se = *os.begin();
@@ -476,7 +476,7 @@ void GPUTrafficManager::_Step()
             // first hop, we have to temporarily set cf's VC to be non-negative
             // in order to avoid seting of an assertion in the routing function.
             cf->vc = vc_start;
-            _rf(router, cf, in_channel, &cf->la_route_set, false);
+            _rf(_rc, router, cf, in_channel, &cf->la_route_set, false);
             cf->vc = -1;
             
             if(cf->watch) {
@@ -564,7 +564,7 @@ void GPUTrafficManager::_Step()
               const Router * router = inject->GetSink();
               assert(router);
               int in_channel = inject->GetSinkPort();
-              _rf(router, f, in_channel, &f->la_route_set, false);
+              _rf(_rc, router, f, in_channel, &f->la_route_set, false);
               if(f->watch) {
                 *gWatchOut << GetSimTime() << " | "
                 << "node" << n << " | "

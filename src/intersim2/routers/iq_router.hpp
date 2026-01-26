@@ -152,7 +152,7 @@ public:
 
   IQRouter( Configuration const & config,
 	    Module *parent, string const & name, int id,
-	    int inputs, int outputs );
+	    int inputs, int outputs, RoutingContext* rc );
   
   virtual ~IQRouter( );
   

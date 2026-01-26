@@ -45,6 +45,7 @@
 #include "gpu-misc.h"
 #include "gpu-sim.h"
 #include "icnt_wrapper.h"
+#include "chiplet_wrapper.h"
 #include "mem_fetch.h"
 #include "mem_latency_stat.h"
 #include "shader_trace.h"
@@ -1049,7 +1050,7 @@ void shader_core_ctx::fetch() {
           if (did_exit){
             //printf("FIN warp_origen:%d; cluster_origen:%d; sub_partition_mem:%d; warp_id_remoto:%d; ciclo:%llu; ", keep_original_mf[i]->get_wid(), keep_original_mf[i]->get_tpc(), 
             //                                 keep_original_mf[i]->get_sub_partition_id(), warp_id, m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle);
-            m_gpu->cluster_max_remotes[m_sid%m_gpu->Ring->number_of_chiplets]++;
+            m_gpu->cluster_max_remotes[m_sid%m_gpu->chiplet_icnt->number_of_chiplets]++;
             //std::cout << map_warps_mask[warp_id]<< std::endl;
             delete m_dynamic_simt_stack[map_warps_id_position[warp_id]];
             mem_fetch * reply = new mem_fetch(keep_original_mf[i]->get_wid(),
@@ -5443,7 +5444,7 @@ bool simt_core_cluster::icnt_injection_buffer_full(unsigned size, bool write, me
     return !::icnt_has_buffer[m_cluster_id % m_config->n_chiplet](m_cluster_id/m_config->n_chiplet, 
             request_size, m_cluster_id % m_config->n_chiplet);
   }else{
-    return !m_gpu->Ring->has_buffer_request(m_cluster_id%chiplets, destination, 0);
+    return !m_gpu->chiplet_icnt->has_buffer_request(m_cluster_id%chiplets, destination, 0);
   }
 }
 
@@ -5488,7 +5489,7 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
   unsigned chiplets = m_config->n_chiplet;
   if (!mf->get_is_write() && !mf->isatomic()){
     if (mf->get_tpc() % chiplets != destination && 
-        m_gpu->Ring->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
+        m_gpu->chiplet_icnt->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
       //mem_fetch *to_sm = new mem_fetch(mf->get_access(),&mf->get_inst(), (unsigned)READ_PACKET_SIZE,
                 // mf->get_wid(), mf->get_sid(), mf->get_tpc(), mf->get_mem_config(),
                 // m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf, NULL);
@@ -5518,11 +5519,11 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
         }
         m_gpu->traffic_information["ring_request_total_bytes"] += mf->size();
         m_gpu->traffic_information["ring_request_actual_bytes"] += mf->size();
-        m_gpu->Ring->push_request(m_cluster_id%chiplets, destination, mf, mf->get_data_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        m_gpu->chiplet_icnt->push_request(m_cluster_id%chiplets, destination, mf, mf->get_data_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       }else{
         m_gpu->traffic_information["ring_request_total_bytes"] += mf->get_ctrl_size();
         m_gpu->traffic_information["ring_request_actual_bytes"] += mf->get_ctrl_size();
-        m_gpu->Ring->push_request(m_cluster_id%chiplets, destination, mf, mf->get_ctrl_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        m_gpu->chiplet_icnt->push_request(m_cluster_id%chiplets, destination, mf, mf->get_ctrl_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       }
     }else{
       assert(mf->get_tpc() % chiplets == destination);
@@ -5534,10 +5535,10 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
     }
   }else{
     if (mf->get_tpc() % chiplets != destination &&
-      m_gpu->Ring->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
+      m_gpu->chiplet_icnt->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
       m_gpu->traffic_information["ring_request_total_bytes"] += mf->size();
       m_gpu->traffic_information["ring_request_actual_bytes"] += mf->size();
-      m_gpu->Ring->push_request(m_cluster_id%chiplets, destination ,mf, mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      m_gpu->chiplet_icnt->push_request(m_cluster_id%chiplets, destination ,mf, mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }else if (mf->get_tpc() % chiplets == destination){
       m_gpu->traffic_information["local_request_total_bytes"] += mf->size();
       m_gpu->traffic_information["local_request_actual_bytes"] += mf->size();
@@ -5672,18 +5673,18 @@ void simt_core_cluster::icnt_cycle() {
   }
 
   unsigned chiplet_reply = m_chiplet;
-  mem_fetch *mf = m_gpu->Ring->top_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, true);
+  mem_fetch *mf = m_gpu->chiplet_icnt->top_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   if(mf){
-    if (mf->get_chiplet() != m_chiplet && m_gpu->Ring->has_buffer_reply(m_chiplet, mf->get_chiplet(), 0)){
-      m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, true);
-      m_gpu->Ring->push_reply(m_chiplet, mf->get_chiplet(), mf, mf->get_is_write() ? mf->get_ctrl_size() : mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    if (mf->get_chiplet() != m_chiplet && m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mf->get_chiplet(), 0)){
+      m_gpu->chiplet_icnt->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      m_gpu->chiplet_icnt->push_reply(m_chiplet, mf->get_chiplet(), mf, mf->get_is_write() ? mf->get_ctrl_size() : mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     
     }else if (mf->get_tpc() == m_cluster_id){
-      m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,true);
+      m_gpu->chiplet_icnt->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       if(!m_reply_fifo.empty()){
         mem_fetch* mem_reply = m_reply_fifo.back();
-        if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
-          m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        if(m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
+          m_gpu->chiplet_icnt->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
           chiplet_reply = mem_reply->get_chiplet();
           m_reply_fifo.pop_back();
         }
@@ -5802,8 +5803,8 @@ void simt_core_cluster::icnt_cycle() {
     }else{
       if(!m_reply_fifo.empty()){
         mem_fetch* mem_reply = m_reply_fifo.back();
-        if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
-          m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        if(m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
+          m_gpu->chiplet_icnt->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
           chiplet_reply = mem_reply->get_chiplet();
           m_reply_fifo.pop_back();
         }
@@ -5812,37 +5813,37 @@ void simt_core_cluster::icnt_cycle() {
   }else{
     if(!m_reply_fifo.empty()){
       mem_fetch* mem_reply = m_reply_fifo.back();
-      if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
-        m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      if(m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0)){
+        m_gpu->chiplet_icnt->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         chiplet_reply = mem_reply->get_chiplet();
         m_reply_fifo.pop_back();
       }
     }
   }
-  mem_fetch *mf2 = m_gpu->Ring->top_reply(m_chiplet,m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, false);
+  mem_fetch *mf2 = m_gpu->chiplet_icnt->top_reply(m_chiplet,m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   if(!mf2){ 
       if(!m_reply_fifo.empty()){
       mem_fetch* mem_reply = m_reply_fifo.back();
-      if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0) && chiplet_reply != mem_reply->get_chiplet()){
-        m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      if(m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0) && chiplet_reply != mem_reply->get_chiplet()){
+        m_gpu->chiplet_icnt->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_reply_fifo.pop_back();
       }
     }
     return;
   }
   
-  if (mf2->get_chiplet() != m_chiplet && m_gpu->Ring->has_buffer_reply(m_chiplet, mf2->get_chiplet(), 0)){
-    m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, false);  
-    m_gpu->Ring->push_reply(m_chiplet, mf2->get_chiplet(), mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  if (mf2->get_chiplet() != m_chiplet && m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mf2->get_chiplet(), 0)){
+    m_gpu->chiplet_icnt->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);  
+    m_gpu->chiplet_icnt->push_reply(m_chiplet, mf2->get_chiplet(), mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   
   }else if (mf2->get_tpc() == m_cluster_id){  
-    m_gpu->Ring->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,false);
+    m_gpu->chiplet_icnt->pop_reply(m_chiplet, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     assert(mf2->get_type() == READ_REPLY || mf2->get_type() == WRITE_ACK || mf2->get_type() == TO_SM|| mf2->get_type() == FINISH_REMOTE); 
 
     if(!m_reply_fifo.empty()){
       mem_fetch* mem_reply = m_reply_fifo.back();
-      if(m_gpu->Ring->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0) && chiplet_reply != mem_reply->get_chiplet()){
-        m_gpu->Ring->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      if(m_gpu->chiplet_icnt->has_buffer_reply(m_chiplet, mem_reply->get_chiplet(), 0) && chiplet_reply != mem_reply->get_chiplet()){
+        m_gpu->chiplet_icnt->push_reply(m_chiplet, mem_reply->get_chiplet(), mem_reply, mem_reply->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_reply_fifo.pop_back();
       }
     }

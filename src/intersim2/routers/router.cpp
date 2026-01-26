@@ -57,9 +57,9 @@ int const Router::STALL_CROSSBAR_CONFLICT = -6;
 
 Router::Router( const Configuration& config,
 		Module *parent, const string & name, int id,
-		int inputs, int outputs ) :
+		int inputs, int outputs, RoutingContext* rc ) :
 TimedModule( parent, name ), _id( id ), _inputs( inputs ), _outputs( outputs ),
-   _partial_internal_cycles(0.0)
+   _partial_internal_cycles(0.0), _rc(rc)
 {
   _crossbar_delay   = ( config.GetInt( "st_prepare_delay" ) + 
 			config.GetInt( "st_final_delay" ) );
@@ -128,16 +128,16 @@ bool Router::IsFaultyOutput( int c ) const
 /*Router constructor*/
 Router *Router::NewRouter( const Configuration& config,
 			   Module *parent, const string & name, int id,
-			   int inputs, int outputs )
+			   int inputs, int outputs, RoutingContext* rc )
 {
   const string type = config.GetStr( "router" );
   Router *r = NULL;
   if ( type == "iq" ) {
-    r = new IQRouter( config, parent, name, id, inputs, outputs );
+    r = new IQRouter( config, parent, name, id, inputs, outputs, rc );
   } else if ( type == "event" ) {
-    r = new EventRouter( config, parent, name, id, inputs, outputs );
+    r = new EventRouter( config, parent, name, id, inputs, outputs, rc );
   } else if ( type == "chaos" ) {
-    r = new ChaosRouter( config, parent, name, id, inputs, outputs );
+    r = new ChaosRouter( config, parent, name, id, inputs, outputs, rc );
   } else {
     cerr << "Unknown router type: " << type << endl;
   }

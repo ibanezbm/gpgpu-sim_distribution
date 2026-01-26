@@ -49,13 +49,14 @@
 #include "dragonfly.hpp"
 
 
-Network::Network( const Configuration &config, const string & name ) :
+Network::Network( const Configuration &config, const string & name, RoutingContext* rc ) :
   TimedModule( 0, name )
 {
   _size     = -1; 
   _nodes    = -1; 
   _channels = -1;
   _classes  = config.GetInt("classes");
+  _rc = rc;
 }
 
 Network::~Network( )
@@ -77,40 +78,40 @@ Network::~Network( )
   }
 }
 
-Network * Network::New(const Configuration & config, const string & name)
+Network * Network::New(const Configuration & config, const string & name, RoutingContext* rc)
 {
   const string topo = config.GetStr( "topology" );
   Network * n = NULL;
   if ( topo == "torus" ) {
     KNCube::RegisterRoutingFunctions() ;
-    n = new KNCube( config, name, false );
+    n = new KNCube( config, name, false, rc );
   } else if ( topo == "mesh" ) {
     KNCube::RegisterRoutingFunctions() ;
-    n = new KNCube( config, name, true );
+    n = new KNCube( config, name, true, rc );
   } else if ( topo == "cmesh" ) {
     CMesh::RegisterRoutingFunctions() ;
-    n = new CMesh( config, name );
+    n = new CMesh( config, name, rc );
   } else if ( topo == "fly" ) {
     KNFly::RegisterRoutingFunctions() ;
-    n = new KNFly( config, name );
+    n = new KNFly( config, name, rc );
   } else if ( topo == "qtree" ) {
     QTree::RegisterRoutingFunctions() ;
-    n = new QTree( config, name );
+    n = new QTree( config, name, rc );
   } else if ( topo == "tree4" ) {
     Tree4::RegisterRoutingFunctions() ;
-    n = new Tree4( config, name );
+    n = new Tree4( config, name, rc );
   } else if ( topo == "fattree" ) {
     FatTree::RegisterRoutingFunctions() ;
-    n = new FatTree( config, name );
+    n = new FatTree( config, name, rc );
   } else if ( topo == "flatfly" ) {
     FlatFlyOnChip::RegisterRoutingFunctions() ;
-    n = new FlatFlyOnChip( config, name );
+    n = new FlatFlyOnChip( config, name, rc );
   } else if ( topo == "anynet"){
     AnyNet::RegisterRoutingFunctions() ;
-    n = new AnyNet(config, name);
+    n = new AnyNet(config, name, rc);
   } else if ( topo == "dragonflynew"){
     DragonFlyNew::RegisterRoutingFunctions() ;
-    n = new DragonFlyNew(config, name);
+    n = new DragonFlyNew(config, name, rc);
   } else {
     cerr << "Unknown topology: " << topo << endl;
   }

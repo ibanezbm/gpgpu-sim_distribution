@@ -56,40 +56,40 @@ LocalInterconnect** g_localicnt_interface;
 // TODO: use delegate/boost/c++11<funtion> instead
 
 static void intersim2_create(unsigned int n_shader, unsigned int n_mem, unsigned int network) {
-  g_icnt_interface->CreateInterconnect(n_shader, n_mem);
+  g_icnt_interface[network]->CreateInterconnect(n_shader, n_mem);
 }
 
-static void intersim2_init(unsigned int network) { g_icnt_interface->Init(); }
+static void intersim2_init(unsigned int network) { g_icnt_interface[network]->Init(); }
 
 static bool intersim2_has_buffer(unsigned input, unsigned int size, unsigned int network) {
-  return g_icnt_interface->HasBuffer(input, size);
+  return g_icnt_interface[network]->HasBuffer(input, size);
 }
 
 static void intersim2_push(unsigned input, unsigned output, void* data,
                            unsigned int size, unsigned int network) {
-  g_icnt_interface->Push(input, output, data, size);
+  g_icnt_interface[network]->Push(input, output, data, size);
 }
 
 static void* intersim2_pop(unsigned output,unsigned int network) {
-  return g_icnt_interface->Pop(output);
+  return g_icnt_interface[network]->Pop(output);
 }
 
-static void intersim2_transfer(unsigned int network) { g_icnt_interface->Advance(); }
+static void intersim2_transfer(unsigned int network) { g_icnt_interface[network]->Advance(); }
 
-static bool intersim2_busy(unsigned int network) { return g_icnt_interface->Busy(); }
+static bool intersim2_busy(unsigned int network) { return g_icnt_interface[network]->Busy(); }
 
-static void intersim2_display_stats(unsigned int network) { g_icnt_interface->DisplayStats(); }
+static void intersim2_display_stats(unsigned int network) { g_icnt_interface[network]->DisplayStats(); }
 
 static void intersim2_display_overall_stats(unsigned int network) {
-  g_icnt_interface->DisplayOverallStats();
+  g_icnt_interface[network]->DisplayOverallStats();
 }
 
 static void intersim2_display_state(FILE* fp, unsigned int network) {
-  g_icnt_interface->DisplayState(fp);
+  g_icnt_interface[network]->DisplayState(fp);
 }
 
 static unsigned intersim2_get_flit_size(unsigned int network) {
-  return g_icnt_interface->GetFlitSize();
+  return g_icnt_interface[network]->GetFlitSize();
 }
 
 //////////////////////////////////////////////////////
@@ -164,8 +164,20 @@ void icnt_wrapper_init(int number_of_networks) {
   switch (g_network_mode) {
     case INTERSIM:
       // FIXME: delete the object: may add icnt_done wrapper
+      g_icnt_interface = static_cast<InterconnectInterface**>(std::malloc(number_of_networks * sizeof(InterconnectInterface*)));
+      icnt_create = static_cast<icnt_create_p*>(std::malloc(number_of_networks * sizeof(icnt_create_p)));
+      icnt_init = static_cast<icnt_init_p*>(std::malloc(number_of_networks * sizeof(icnt_init_p)));
+      icnt_has_buffer = static_cast<icnt_has_buffer_p*>(std::malloc(number_of_networks * sizeof(icnt_has_buffer_p)));
+      icnt_push = static_cast<icnt_push_p*>(std::malloc(number_of_networks * sizeof(icnt_push_p)));
+      icnt_pop = static_cast<icnt_pop_p*>(std::malloc(number_of_networks * sizeof(icnt_pop_p)));
+      icnt_transfer = static_cast<icnt_transfer_p*>(std::malloc(number_of_networks * sizeof(icnt_transfer_p)));
+      icnt_busy = static_cast<icnt_busy_p*>(std::malloc(number_of_networks * sizeof(icnt_busy_p)));
+      icnt_display_stats = static_cast<icnt_display_stats_p*>(std::malloc(number_of_networks * sizeof(icnt_display_stats_p)));
+      icnt_display_overall_stats = static_cast<icnt_display_overall_stats_p*>(std::malloc(number_of_networks * sizeof(icnt_display_overall_stats_p)));
+      icnt_display_state = static_cast<icnt_display_state_p*>(std::malloc(number_of_networks * sizeof(icnt_display_state_p)));
+      icnt_get_flit_size = static_cast<icnt_get_flit_size_p*>(std::malloc(number_of_networks * sizeof(icnt_get_flit_size_p)));
       for (int i = 0; i < number_of_networks; i++){
-        g_icnt_interface = InterconnectInterface::New(g_network_config_filename);
+        g_icnt_interface[i] = InterconnectInterface::New(g_network_config_filename);
         icnt_create[i] = intersim2_create;
         icnt_init[i] = intersim2_init;
         icnt_has_buffer[i] = intersim2_has_buffer;

@@ -32,6 +32,7 @@ class router
 private:
     unsigned number_of_networks;
     double frequency;
+    bool first_buffer = true;
     unsigned links_per_gpu;
     std::unordered_map<std::tuple<bool, bool, unsigned, unsigned>, buffer*, tuple_hash_routers> buffers;
 
@@ -43,11 +44,10 @@ public:
     void push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle);
     bool has_buffer_reply(unsigned input, unsigned output, unsigned int size);
     bool has_buffer_request(unsigned input, unsigned output, unsigned int size);
-    mem_fetch* top_reply(unsigned module_number, unsigned long cycle, bool first_buffer);
-    void pop_reply(unsigned module_number, unsigned long cycle, bool first_buffer);
-    mem_fetch* top_request(unsigned module_number,unsigned long cycle, bool first_buffer);
-    void pop_request(unsigned module_number, unsigned long cycle, bool first_buffer);
+    mem_fetch* top_reply(unsigned module_number, unsigned long cycle);
+    void pop_reply(unsigned module_number, unsigned long cycle);
+    mem_fetch* top_request(unsigned module_number,unsigned long cycle);
+    void pop_request(unsigned module_number, unsigned long cycle);
     void cycle(unsigned long cycle);
-
 };
 

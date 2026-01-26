@@ -48,8 +48,8 @@
 #include "buffer_monitor.hpp"
 
 IQRouter::IQRouter( Configuration const & config, Module *parent, 
-		    string const & name, int id, int inputs, int outputs )
-: Router( config, parent, name, id, inputs, outputs ), _active(false)
+		    string const & name, int id, int inputs, int outputs, RoutingContext* rc )
+: Router( config, parent, name, id, inputs, outputs, rc ), _active(false)
 {
   _vcs         = config.GetInt( "num_vcs" );
 
@@ -85,7 +85,7 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   for ( int i = 0; i < _inputs; ++i ) {
     ostringstream module_name;
     module_name << "buf_" << i;
-    _buf[i] = new Buffer(config, _outputs, this, module_name.str( ) );
+    _buf[i] = new Buffer(config, _outputs, this, module_name.str( ));
     module_name.str("");
   }
 
@@ -532,7 +532,7 @@ void IQRouter::_RouteUpdate( )
 		 << ")." << endl;
     }
 
-    cur_buf->Route(vc, _rf, this, f, input);
+    cur_buf->Route(vc, _rf, _rc, this, f, input);
     cur_buf->SetState(vc, VC::vc_alloc);
     if(_speculative) {
       _sw_alloc_vcs.push_back(make_pair(-1, make_pair(item.second, -1)));
@@ -1107,7 +1107,7 @@ void IQRouter::_SWHoldUpdate( )
 			 << "." << endl;
 	    }
 	    int in_channel = channel->GetSinkPort();
-	    _rf(router, f, in_channel, &f->la_route_set, false);
+	    _rf(_rc, router, f, in_channel, &f->la_route_set, false);
 	  }
 	} else {
 	  f->la_route_set.Clear();
@@ -2017,7 +2017,7 @@ void IQRouter::_SWAllocUpdate( )
 			 << "." << endl;
 	    }
 	    int in_channel = channel->GetSinkPort();
-	    _rf(router, f, in_channel, &f->la_route_set, false);
+	    _rf(_rc, router, f, in_channel, &f->la_route_set, false);
 	  }
 	} else {
 	  f->la_route_set.Clear();
@@ -2358,7 +2358,7 @@ void IQRouter::_UpdateNOQ(int input, int vc, Flit const * f) {
   if(router) {
     int in_channel = channel->GetSinkPort();
     OutputSet nos;
-    _rf(router, f, in_channel, &nos, false);
+    _rf(_rc, router, f, in_channel, &nos, false);
     sl = nos.GetSet();
     assert(sl.size() == 1);
     OutputSet::sSetElement const & se = *sl.begin();

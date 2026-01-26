@@ -41,16 +41,18 @@
 #include "packet_reply_info.hpp"
 
 TrafficManager * TrafficManager::New(Configuration const & config,
-                                     vector<Network *> const & net)
+                                     vector<Network *> const & net,
+                                     InterconnectInterface* icnt_interface,
+                                     RoutingContext* rc)
 {
     TrafficManager * result = NULL;
     string sim_type = config.GetStr("sim_type");
     if((sim_type == "latency") || (sim_type == "throughput")) {
-        result = new TrafficManager(config, net);
+        result = new TrafficManager(config, net, icnt_interface, rc);
     } else if(sim_type == "batch") {
-        result = new BatchTrafficManager(config, net);
+        result = new BatchTrafficManager(config, net, rc);
   } else if(sim_type == "gpgpusim") {
-    result = new GPUTrafficManager(config, net);
+    result = new GPUTrafficManager(config, net, icnt_interface, rc);
   }
   else {
         cerr << "Unknown simulation type: " << sim_type << endl;
@@ -58,10 +60,11 @@ TrafficManager * TrafficManager::New(Configuration const & config,
     return result;
 }
 
-TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net )
+TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface, RoutingContext* rc)
     : Module( 0, "traffic_manager" ), _net(net), _empty_network(false), _deadlock_timer(0), _reset_time(0), _drain_time(-1), _cur_id(0), _cur_pid(0), _time(0)
 {
-
+    this->icnt_interface = icnt_interface;
+    this->_rc = rc;
     _nodes = _net[0]->NumNodes( );
     _routers = _net[0]->NumRouters( );
 
@@ -1054,7 +1057,7 @@ void TrafficManager::_Step( )
                 if(cf->head && cf->vc == -1) { // Find first available VC
 	  
                     OutputSet route_set;
-                    _rf(NULL, cf, -1, &route_set, true);
+                    _rf(_rc, NULL, cf, -1, &route_set, true);
                     set<OutputSet::sSetElement> const & os = route_set.GetSet();
                     assert(os.size() == 1);
                     OutputSet::sSetElement const & se = *os.begin();
@@ -1073,7 +1076,7 @@ void TrafficManager::_Step( )
                         // first hop, we have to temporarily set cf's VC to be non-negative 
                         // in order to avoid seting of an assertion in the routing function.
                         cf->vc = vc_start;
-                        _rf(router, cf, in_channel, &cf->la_route_set, false);
+                        _rf(_rc, router, cf, in_channel, &cf->la_route_set, false);
                         cf->vc = -1;
 
                         if(cf->watch) {
@@ -1161,7 +1164,7 @@ void TrafficManager::_Step( )
                             const Router * router = inject->GetSink();
                             assert(router);
                             int in_channel = inject->GetSinkPort();
-                            _rf(router, f, in_channel, &f->la_route_set, false);
+                            _rf(_rc, router, f, in_channel, &f->la_route_set, false);
                             if(f->watch) {
                                 *gWatchOut << GetSimTime() << " | "
                                            << "node" << n << " | "

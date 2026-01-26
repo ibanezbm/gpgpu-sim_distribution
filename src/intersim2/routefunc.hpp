@@ -29,20 +29,40 @@
 #define _ROUTEFUNC_HPP_
 
 #include "flit.hpp"
-#include "router.hpp"
 #include "outputset.hpp"
 #include "config_utils.hpp"
 
-typedef void (*tRoutingFunction)( const Router *, const Flit *, int in_channel, OutputSet *, bool );
+/* Global information used by routing functions */
 
-void InitializeRoutingMap( const Configuration & config );
+class RoutingContext{
+  public:
+    int gNumVCs;
+
+    /* Add more functions here
+    *
+    */
+
+    // ============================================================
+    //  Balfour-Schultz
+    int gReadReqBeginVC, gReadReqEndVC;
+    int gWriteReqBeginVC, gWriteReqEndVC;
+    int gReadReplyBeginVC, gReadReplyEndVC;
+    int gWriteReplyBeginVC, gWriteReplyEndVC;
+  
+  RoutingContext() : gNumVCs(0),
+                     gReadReqBeginVC(0), gReadReqEndVC(0),
+                     gWriteReqBeginVC(0), gWriteReqEndVC(0),
+                     gReadReplyBeginVC(0), gReadReplyEndVC(0),
+                     gWriteReplyBeginVC(0), gWriteReplyEndVC(0)
+    {}
+};
+
+class Router;
+
+typedef void (*tRoutingFunction)( const RoutingContext*, const Router *, const Flit *, int in_channel, OutputSet *, bool );
+
+RoutingContext* InitializeRoutingMap( const Configuration & config );
 
 extern map<string, tRoutingFunction> gRoutingFunctionMap;
-
-extern int gNumVCs;
-extern int gReadReqBeginVC, gReadReqEndVC;
-extern int gWriteReqBeginVC, gWriteReqEndVC;
-extern int gReadReplyBeginVC, gReadReplyEndVC;
-extern int gWriteReplyBeginVC, gWriteReplyEndVC;
 
 #endif
