@@ -47,6 +47,23 @@ GPUTrafficManager::GPUTrafficManager( const Configuration &config, const vector<
       _input_queue[subnet][node].resize(_classes);
     }
   }
+  _subnet_flits.assign(_subnets, std::vector<long long>(_classes, 0));
+  _subnet_flit_lat_sum.assign(_subnets, std::vector<long long>(_classes, 0));
+  _subnet_flit_lat_min.assign(_subnets, std::vector<int>(_classes, INT_MAX));
+  _subnet_flit_lat_max.assign(_subnets, std::vector<int>(_classes, 0));
+
+  _overall_subnet_flits.assign(_subnets, std::vector<long long>(_classes, 0));
+  _overall_subnet_flit_lat_sum.assign(_subnets, std::vector<long long>(_classes, 0));
+  _overall_subnet_flit_lat_min.assign(_subnets, std::vector<int>(_classes, INT_MAX));
+  _overall_subnet_flit_lat_max.assign(_subnets, std::vector<int>(_classes, 0));
+
+  _win_accepted_flits.assign(_subnets, 0);
+  _win_accepted_bytes.assign(_subnets, 0);
+  _peak_bw_subnet_GBs.assign(_subnets, 0.0);
+
+  _overall_peak_bw_subnet_GBs.assign(_subnets, 0.0);
+
+  _win_start_time = 0;
 }
 
 GPUTrafficManager::~GPUTrafficManager()
@@ -55,7 +72,9 @@ GPUTrafficManager::~GPUTrafficManager()
 
 void GPUTrafficManager::Init()
 {
+  _flit_size = icnt_interface->GetFlitSize();
   _time = 0;
+  _win_start_time = 0;
   _sim_state = running;
   _ClearStats( );
   
@@ -99,7 +118,20 @@ void GPUTrafficManager::_RetireFlit( Flit *f, int dest )
   if(_pair_stats){
     _pair_flat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - f->itime );
   }
+
+  int const s   = f->subnetwork;
+  int const cl  = f->cl;
+  _subnet_flits[s][cl]++;
+
+  _subnet_flit_lat_sum[s][cl] += f->atime - f->itime;
+
+  if((f->atime - f->itime) < _subnet_flit_lat_min[s][cl]) _subnet_flit_lat_min[s][cl] = f->atime - f->itime;
+  if((f->atime - f->itime) > _subnet_flit_lat_max[s][cl]) _subnet_flit_lat_max[s][cl] = f->atime - f->itime;
   
+  // --- BW peak accounting (per flit retired) ---
+  _win_accepted_flits[s] += 1;
+  _win_accepted_bytes[s] += _flit_size;
+
   if ( f->tail ) {
     Flit * head;
     if(f->head) {
@@ -665,12 +697,43 @@ void GPUTrafficManager::_Step()
     _net[subnet]->Evaluate( );
     _net[subnet]->WriteOutputs( );
   }
+
+  calculate_bandwidth();
   
   ++_time;
   assert(_time);
+  cout<<"TIME "<<_time<<endl;
   if(gTrace){
     cout<<"TIME "<<_time<<endl;
   }
   
 }
 
+
+void GPUTrafficManager::calculate_bandwidth(){
+  // --- BW peak: windowed measurement ---
+  long long elapsed = _time - _win_start_time + 1;
+  if(elapsed >= _bw_window) {
+
+    long long total_bytes = 0;
+    for(int s=0; s<_subnets; ++s) total_bytes += _win_accepted_bytes[s];
+
+    // BW total in GB/s 
+    double seconds = double(elapsed) / icnt_interface->GetFrequency();
+    double bw_total_GBs = (double(total_bytes) / seconds) / 1e9;
+
+    if(bw_total_GBs > _peak_bw_total_GBs) _peak_bw_total_GBs = bw_total_GBs;
+
+    // Each subnet
+    for(int s=0; s<_subnets; ++s) {
+      double bw_s = (double(_win_accepted_bytes[s]) / seconds /1e9);
+      printf("AAAAAAAAAAAAAA %lld %lld %lld\n ",_win_accepted_bytes[s], elapsed,_win_accepted_flits[s]);
+      if(bw_s > _peak_bw_subnet_GBs[s]) _peak_bw_subnet_GBs[s] = bw_s;
+    }
+
+    // Reset window
+    std::fill(_win_accepted_flits.begin(), _win_accepted_flits.end(), 0);
+    std::fill(_win_accepted_bytes.begin(), _win_accepted_bytes.end(), 0);
+    _win_start_time = _time + 1;
+  }
+}

@@ -14,6 +14,7 @@ class ChipletInterconnection {
 public:
     ChipletInterconnection() = default;
     virtual ~ChipletInterconnection() = default;
+    virtual void Init() = 0;
     virtual void push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) = 0;
     virtual void push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) = 0;
     virtual mem_fetch* top_reply(unsigned module_number, unsigned long cycle) = 0;
@@ -25,6 +26,7 @@ public:
     virtual void step(unsigned long cycle) = 0;
     virtual void print_stats() = 0;
     unsigned number_of_chiplets = 0;
+    double chiplet_frequency = 0.0;
     unsigned long long cycles = 0;
 };
 

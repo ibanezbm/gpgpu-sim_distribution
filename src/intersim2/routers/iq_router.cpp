@@ -211,7 +211,7 @@ IQRouter::~IQRouter( )
 void IQRouter::AddOutputChannel(FlitChannel * channel, CreditChannel * backchannel)
 {
   int alloc_delay = _speculative ? max(_vc_alloc_delay, _sw_alloc_delay) : (_vc_alloc_delay + _sw_alloc_delay);
-  int min_latency = 1 + _crossbar_delay + channel->GetLatency() + _routing_delay + alloc_delay + backchannel->GetLatency()  + _credit_delay;
+  int min_latency = _crossbar_delay + channel->GetLatency() + _routing_delay + alloc_delay + backchannel->GetLatency()  + _credit_delay;
   _next_buf[_output_channels.size()]->SetMinLatency(min_latency);
   Router::AddOutputChannel(channel, backchannel);
 }
@@ -468,7 +468,7 @@ void IQRouter::_RouteEvaluate( )
     
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
     iter->first = GetSimTime() + _routing_delay - 1;
     
@@ -562,7 +562,7 @@ void IQRouter::_VCAllocEvaluate( )
 
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
 
     int const input = iter->second.first.first;
@@ -711,7 +711,7 @@ void IQRouter::_VCAllocEvaluate( )
 
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
     iter->first = GetSimTime() + _vc_alloc_delay - 1;
 
@@ -938,7 +938,7 @@ void IQRouter::_SWHoldEvaluate( )
     
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
     iter->first = GetSimTime();
     
@@ -1334,7 +1334,7 @@ void IQRouter::_SWAllocEvaluate( )
 
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
 
     int const input = iter->second.first.first;
@@ -1498,7 +1498,7 @@ void IQRouter::_SWAllocEvaluate( )
 
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
     iter->first = GetSimTime() + _sw_alloc_delay - 1;
 
@@ -2140,7 +2140,7 @@ void IQRouter::_SwitchEvaluate( )
     
     int const time = iter->first;
     if(time >= 0) {
-      break;
+      continue;
     }
     iter->first = GetSimTime() + _crossbar_delay - 1;
 

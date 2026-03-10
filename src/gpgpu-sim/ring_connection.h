@@ -10,6 +10,7 @@
 class ring : public ChipletInterconnection {
 public:
     ring(unsigned number_of_networks, double freq);
+    void Init() override;
     void push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle);
     void push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle);
     mem_fetch* top_reply(unsigned module_number,unsigned long cycle);

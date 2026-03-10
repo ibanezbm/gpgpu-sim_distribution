@@ -58,8 +58,19 @@ public:
   // correspond to TrafficManger::Run/SingleSim
   void Init();
   
-  // TODO: if it is not good...
-  friend class InterconnectInterface;
+  inline int getNodeCount() const { return _nodes; }
+  inline void Step() { _Step(); }
+  inline void GeneratePacket(int source, int stype, int cl, int time, int subnet, int packet_size, const Flit::FlitType& packet_type, void* const data, int dest) {
+    _GeneratePacket(source, stype, cl, time, subnet, packet_size, packet_type, data, dest);
+  }
+  inline bool hasInFlightFlits(int cl) const { return !_total_in_flight_flits[cl].empty(); }
+  inline bool isInputQueueEmpty(int subnet, int node, int cl) const { return _input_queue[subnet][node][cl].empty(); }
+  inline size_t getInputQueueSize(int subnet, int node, int cl) const { return _input_queue[subnet][node][cl].size(); }
+  inline void setDrainTime(int time) { _drain_time = time; }
+  inline void incrementTotalSims() { ++_total_sims; }
+  inline void UpdateOverallStats() { _UpdateOverallStats(); }
+  inline bool printCsvResults() const { return _print_csv_results; }
+  void calculate_bandwidth();
   
   
   

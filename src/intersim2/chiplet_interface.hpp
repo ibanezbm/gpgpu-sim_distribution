@@ -11,11 +11,11 @@
 
 using namespace std;
 
-class ChipletInterface : public ChipletInterconnection, InterconnectInterface {
+class ChipletInterface : public ChipletInterconnection, public InterconnectInterface {
     public:
-        ChipletInterface(unsigned number_of_networks, char* g_chiplet_config_filename);
-        virtual ~ChipletInterface() override;
-
+        ChipletInterface(unsigned number_of_networks, char* g_chiplet_config_filename, double chiplet_freq);
+        ~ChipletInterface() = default;
+        void Init() override;
         void push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) override;
         void push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) override;
         mem_fetch* top_reply(unsigned module_number, unsigned long cycle) override;

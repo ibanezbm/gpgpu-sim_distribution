@@ -1062,8 +1062,8 @@ void shader_core_ctx::fetch() {
                                     keep_original_mf[i]->get_tlx_addr(), 1,
                                     keep_original_mf[i]->requests);
             reply->set_data_size(keep_original_mf[i]->number_of_threads*0);
-            m_gpu->traffic_information["ring_reply_total_bytes"] += reply->size();
-            m_gpu->traffic_information["ring_reply_actual_bytes"] += reply->size();
+            m_gpu->traffic_information["chiplet_reply_total_bytes"] += reply->size();
+            m_gpu->traffic_information["chiplet_reply_actual_bytes"] += reply->size();
             m_cluster->m_reply_fifo.push_back(reply);
             for(unsigned j = 0; j < m_gpu->find_original_mf.size(); j++){
               if(m_gpu->find_original_mf[j]!=NULL){
@@ -5444,7 +5444,7 @@ bool simt_core_cluster::icnt_injection_buffer_full(unsigned size, bool write, me
     return !::icnt_has_buffer[m_cluster_id % m_config->n_chiplet](m_cluster_id/m_config->n_chiplet, 
             request_size, m_cluster_id % m_config->n_chiplet);
   }else{
-    return !m_gpu->chiplet_icnt->has_buffer_request(m_cluster_id%chiplets, destination, 0);
+    return !m_gpu->chiplet_icnt->has_buffer_request(m_cluster_id%chiplets, destination, request_size);
   }
 }
 
@@ -5517,12 +5517,12 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
           }
           mf->set_data_size(mf->requests.size()*8+1+8*mf->number_of_threads);
         }
-        m_gpu->traffic_information["ring_request_total_bytes"] += mf->size();
-        m_gpu->traffic_information["ring_request_actual_bytes"] += mf->size();
+        m_gpu->traffic_information["chiplet_request_total_bytes"] += mf->size();
+        m_gpu->traffic_information["chiplet_request_actual_bytes"] += mf->size();
         m_gpu->chiplet_icnt->push_request(m_cluster_id%chiplets, destination, mf, mf->get_data_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       }else{
-        m_gpu->traffic_information["ring_request_total_bytes"] += mf->get_ctrl_size();
-        m_gpu->traffic_information["ring_request_actual_bytes"] += mf->get_ctrl_size();
+        m_gpu->traffic_information["chiplet_request_total_bytes"] += mf->get_ctrl_size();
+        m_gpu->traffic_information["chiplet_request_actual_bytes"] += mf->get_ctrl_size();
         m_gpu->chiplet_icnt->push_request(m_cluster_id%chiplets, destination, mf, mf->get_ctrl_size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       }
     }else{
@@ -5536,8 +5536,8 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
   }else{
     if (mf->get_tpc() % chiplets != destination &&
       m_gpu->chiplet_icnt->has_buffer_request(m_cluster_id%chiplets, destination, 0)) {
-      m_gpu->traffic_information["ring_request_total_bytes"] += mf->size();
-      m_gpu->traffic_information["ring_request_actual_bytes"] += mf->size();
+      m_gpu->traffic_information["chiplet_request_total_bytes"] += mf->size();
+      m_gpu->traffic_information["chiplet_request_actual_bytes"] += mf->size();
       m_gpu->chiplet_icnt->push_request(m_cluster_id%chiplets, destination ,mf, mf->size(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }else if (mf->get_tpc() % chiplets == destination){
       m_gpu->traffic_information["local_request_total_bytes"] += mf->size();
@@ -5693,12 +5693,12 @@ void simt_core_cluster::icnt_cycle() {
       assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK || mf->get_type() == TO_SM || mf->get_type() == FINISH_REMOTE);
       
       if (mf->get_type() == TO_SM){
-          m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+          m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= 8;
           m_response_fifo.push_back(mf);
           m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
       
       }else if(mf->get_type() == FINISH_REMOTE){
-        m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+        m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= 8;
         if(m_core[0]->flush_remote.find(mf->get_wid()) != m_core[0]->flush_remote.end()){
           //TODO CAMBIAR POR SOLO UN HILO
           
@@ -5794,7 +5794,7 @@ void simt_core_cluster::icnt_cycle() {
           }
         }
       }else{
-          m_gpu->traffic_information["ring_reply_actual_bytes"] -= mf->size();
+          m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= mf->size();
           mf->set_status(IN_CLUSTER_TO_SHADER_QUEUE,
                       m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
           m_response_fifo.push_back(mf);
@@ -5849,12 +5849,12 @@ void simt_core_cluster::icnt_cycle() {
     }
 
     if (mf2->get_type() == TO_SM){ 
-        m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+        m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= 8;
         m_response_fifo.push_back(mf2);
         m_stats->n_mem_to_simt[m_cluster_id] += mf2->get_num_flits(false);
     
     }else if(mf2->get_type() == FINISH_REMOTE){
-        m_gpu->traffic_information["ring_reply_actual_bytes"] -= 8;
+        m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= 8;
         if(m_core[0]->flush_remote.find(mf2->get_wid()) != m_core[0]->flush_remote.end()){
           
           //TODO CAMBIAR A UN SOLO HILO
@@ -5950,7 +5950,7 @@ void simt_core_cluster::icnt_cycle() {
           }
         }
     }else{
-        m_gpu->traffic_information["ring_reply_actual_bytes"] -= mf2->size();
+        m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= mf2->size();
         mf2->set_status(IN_CLUSTER_TO_SHADER_QUEUE,
                     m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_response_fifo.push_back(mf2);

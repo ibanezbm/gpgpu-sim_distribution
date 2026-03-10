@@ -153,7 +153,8 @@ protected:
   vector<Stats *> _flat_stats;     
   vector<double> _overall_min_flat;  
   vector<double> _overall_avg_flat;  
-  vector<double> _overall_max_flat;  
+  vector<double> _overall_max_flat;
+  vector<double> _overall_num_flits;  
 
   vector<Stats *> _frag_stats;
   vector<double> _overall_min_frag;
@@ -201,6 +202,29 @@ protected:
   vector<int> _slowest_flit;
 
   map<string, Stats *> _stats;
+
+    // Por subnet y clase
+  std::vector<std::vector<long long>> _subnet_flits;
+  std::vector<std::vector<long long>> _subnet_flit_lat_sum;
+  std::vector<std::vector<int>> _subnet_flit_lat_min;
+  std::vector<std::vector<int>> _subnet_flit_lat_max;
+
+  std::vector<std::vector<long long>> _overall_subnet_flits;
+  std::vector<std::vector<long long>> _overall_subnet_flit_lat_sum;
+  std::vector<std::vector<int>> _overall_subnet_flit_lat_min;
+  std::vector<std::vector<int>> _overall_subnet_flit_lat_max;
+
+  int _flit_size = 32;
+  int _bw_window = 100;
+  std::vector<long long> _win_accepted_flits;
+  std::vector<long long> _win_accepted_bytes;
+
+  double _peak_bw_total_GBs = 0.0;
+  double _overall_peak_bw_total_GBs = 0.0;
+  std::vector<double> _peak_bw_subnet_GBs;
+  long long _win_start_time = 0;
+
+  std::vector<double> _overall_peak_bw_subnet_GBs;
 
   // ============ Simulation parameters ============ 
 

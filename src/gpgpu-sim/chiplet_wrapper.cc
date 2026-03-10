@@ -29,8 +29,8 @@ ChipletInterconnection* chiplet_wrapper_init(int number_of_nodes, double chiplet
     switch (g_chiplet_mode) {
         case CHIPLET_INTERSIM:
             // Initialize intersim chiplet interconnection
-            chiplet_icnt = new ChipletInterface(number_of_nodes, g_chiplet_config_filename);
-            //break;
+            chiplet_icnt = new ChipletInterface(number_of_nodes, g_chiplet_config_filename, chiplet_freq);
+            break;
         case CHIPLET_RING:
             // Initialize local ring chiplet interconnection
             chiplet_icnt = new ring(number_of_nodes, chiplet_freq); // Assuming frequency is 1.0 GHz

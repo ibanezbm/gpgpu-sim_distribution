@@ -490,10 +490,12 @@ class gpgpu_sim_config : public power_config,
   double icnt_freq;
   double dram_freq;
   double l2_freq;
+  double chiplet_freq;
   double core_period;
   double icnt_period;
   double dram_period;
   double l2_period;
+  double chiplet_period;
 
   // GPGPU-Sim timing model options
   unsigned long long gpu_max_cycle_opt;
@@ -735,6 +737,7 @@ class gpgpu_sim : public gpgpu_t {
   double icnt_time;
   double dram_time;
   double l2_time;
+  double chiplet_time;
 
   // debug
   bool gpu_deadlock;

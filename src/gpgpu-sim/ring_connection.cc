@@ -56,6 +56,10 @@ void ring::push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned i
     routers[input]->push_reply(input, output, mf, size, cycle);
 }
 
+void ring::Init() {
+    // No initialization needed for the ring interconnection
+}
+
 void ring::push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle){
     /*std::srand(static_cast<unsigned int>(0));
     int random_number = (std::rand() % 2) + 1;

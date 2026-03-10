@@ -160,7 +160,7 @@ void icnt_reg_options(class OptionParser* opp) {
                          &g_inct_config.grant_cycles, "grant_cycles", "1");
 }
 
-void icnt_wrapper_init(int number_of_networks) {
+void icnt_wrapper_init(int number_of_networks, double icnt_freq) {
   switch (g_network_mode) {
     case INTERSIM:
       // FIXME: delete the object: may add icnt_done wrapper
@@ -177,7 +177,7 @@ void icnt_wrapper_init(int number_of_networks) {
       icnt_display_state = static_cast<icnt_display_state_p*>(std::malloc(number_of_networks * sizeof(icnt_display_state_p)));
       icnt_get_flit_size = static_cast<icnt_get_flit_size_p*>(std::malloc(number_of_networks * sizeof(icnt_get_flit_size_p)));
       for (int i = 0; i < number_of_networks; i++){
-        g_icnt_interface[i] = InterconnectInterface::New(g_network_config_filename);
+        g_icnt_interface[i] = InterconnectInterface::New(g_network_config_filename, icnt_freq);
         icnt_create[i] = intersim2_create;
         icnt_init[i] = intersim2_init;
         icnt_has_buffer[i] = intersim2_has_buffer;

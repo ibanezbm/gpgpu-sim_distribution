@@ -63,7 +63,7 @@ extern unsigned g_network_mode;
 
 enum network_mode { INTERSIM = 1, LOCAL_XBAR = 2, N_NETWORK_MODE };
 
-void icnt_wrapper_init(int number_of_networks);
+void icnt_wrapper_init(int number_of_networks, double icnt_freq);
 void icnt_reg_options(class OptionParser* opp);
 
 #endif

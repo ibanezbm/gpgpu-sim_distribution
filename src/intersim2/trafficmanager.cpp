@@ -464,6 +464,7 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _overall_min_flat.resize(_classes, 0.0);
     _overall_avg_flat.resize(_classes, 0.0);
     _overall_max_flat.resize(_classes, 0.0);
+    _overall_num_flits.resize(_classes, 0.0);
 
     _frag_stats.resize(_classes);
     _overall_min_frag.resize(_classes, 0.0);
@@ -1337,6 +1338,13 @@ void TrafficManager::_ClearStats( )
 
     }
 
+
+    _subnet_flits.assign(_subnets, std::vector<long long>(_classes, 0));
+    _subnet_flit_lat_sum.assign(_subnets, std::vector<long long>(_classes, 0));
+    _subnet_flit_lat_min.assign(_subnets, std::vector<int>(_classes, INT_MAX));
+    _subnet_flit_lat_max.assign(_subnets, std::vector<int>(_classes, 0));
+
+
     _reset_time = _time;
 }
 
@@ -1710,6 +1718,7 @@ void TrafficManager::_UpdateOverallStats() {
         _overall_min_flat[c] += _flat_stats[c]->Min();
         _overall_avg_flat[c] += _flat_stats[c]->Average();
         _overall_max_flat[c] += _flat_stats[c]->Max();
+        _overall_num_flits[c] += _flat_stats[c]->NumSamples();
     
         _overall_min_frag[c] += _frag_stats[c]->Min();
         _overall_avg_frag[c] += _frag_stats[c]->Average();
@@ -1778,6 +1787,23 @@ void TrafficManager::_UpdateOverallStats() {
 #endif
 
     }
+
+    for(int s=0; s<_subnets; ++s) {
+        auto n = _subnet_flits[s][0];
+        if(n > 0) {
+            _overall_subnet_flits[s][0] += n;
+            if (_overall_subnet_flit_lat_max[s][0] < _subnet_flit_lat_max[s][0]) {_overall_subnet_flit_lat_max[s][0] = _subnet_flit_lat_max[s][0];}
+            if (_overall_subnet_flit_lat_min[s][0] > _subnet_flit_lat_min[s][0]) {_overall_subnet_flit_lat_min[s][0] = _subnet_flit_lat_min[s][0];}
+            _overall_subnet_flit_lat_sum[s][0] += _subnet_flit_lat_sum[s][0];
+        }
+
+        if (_overall_peak_bw_subnet_GBs[s] < _peak_bw_subnet_GBs[s]) {_overall_peak_bw_subnet_GBs[s] = _peak_bw_subnet_GBs[s];}
+        if (_overall_peak_bw_total_GBs < _peak_bw_total_GBs) {_overall_peak_bw_total_GBs = _peak_bw_total_GBs;}
+    }
+
+    
+    
+
 }
 
 void TrafficManager::WriteStats(ostream & os) const {
@@ -1976,8 +2002,8 @@ void TrafficManager::DisplayStats(ostream & os) const {
         if(_measure_stats[c] == 0) {
             continue;
         }
-    
-        cout << "Class " << c << ":" << endl;
+        double time_delta = (double)(_time - _reset_time);
+        cout << "Sim_time: "<< time_delta << "; Class " << c << ":" << endl;
     
         cout 
             << "Packet latency average = " << _plat_stats[c]->Average() << endl
@@ -1988,6 +2014,7 @@ void TrafficManager::DisplayStats(ostream & os) const {
             << "\tmaximum = " << _nlat_stats[c]->Max() << endl
             << "Slowest packet = " << _slowest_packet[c] << endl
             << "Flit latency average = " << _flat_stats[c]->Average() << endl
+            << "\tnum_flits = " << _flat_stats[c]->NumSamples() << endl
             << "\tminimum = " << _flat_stats[c]->Min() << endl
             << "\tmaximum = " << _flat_stats[c]->Max() << endl
             << "Slowest flit = " << _slowest_flit[c] << endl
@@ -2000,7 +2027,6 @@ void TrafficManager::DisplayStats(ostream & os) const {
         double rate_avg;
         int sent_packets, sent_flits, accepted_packets, accepted_flits;
         int min_pos, max_pos;
-        double time_delta = (double)(_time - _reset_time);
         _ComputeStats(_sent_packets[c], &count_sum, &count_min, &count_max, &min_pos, &max_pos);
         rate_sum = (double)count_sum / time_delta;
         rate_min = (double)count_min / time_delta;
@@ -2077,6 +2103,23 @@ void TrafficManager::DisplayStats(ostream & os) const {
 #endif
     
     }
+
+    for(int s=0; s<_subnets; ++s) {
+        std::cout << "Subnet " << s << " Class 0:\n";
+        auto n = _subnet_flits[s][0];
+        if(n > 0) {
+            double avg = double(_subnet_flit_lat_sum[s][0]) / double(n);
+            std::cout << "  Flit latency avg = " << avg
+                    << " min=" << _subnet_flit_lat_min[s][0]
+                    << " max=" << _subnet_flit_lat_max[s][0]
+                    << " num_flits=" << n << "\n";
+        }
+    }
+
+    cout << "Peak bandwidth total = " << _peak_bw_total_GBs << " GB/s\n";
+    for(int s=0; s<_subnets; ++s) {
+        cout << "Peak bandwidth subnet " << s << " = " << _peak_bw_subnet_GBs[s] << " GB/s\n";
+    }
 }
 
 void TrafficManager::DisplayOverallStats( ostream & os ) const {
@@ -2109,6 +2152,8 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
         os << "\tminimum = " << _overall_min_flat[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
         os << "\tmaximum = " << _overall_max_flat[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tnum_flits_total = " << _overall_num_flits[c]
            << " (" << _total_sims << " samples)" << endl;
 
         os << "Fragmentation average = " << _overall_avg_frag[c] / (double)_total_sims
@@ -2168,6 +2213,23 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
            << " (" << _total_sims << " samples)" << endl;
 #endif
     
+    }
+
+    for(int s=0; s<_subnets; ++s) {
+        std::cout << "Subnet " << s << " Class 0:\n";
+        auto n = _overall_subnet_flits[s][0];
+        if(n > 0) {
+            double avg = double(_overall_subnet_flit_lat_sum[s][0]) / double(n);
+            std::cout << "  Flit latency avg = " << avg
+                    << " min=" << _overall_subnet_flit_lat_min[s][0]
+                    << " max=" << _overall_subnet_flit_lat_max[s][0]
+                    << " num_flits=" << n << "\n";
+        }
+    }
+
+    cout << "Overall peak bandwidth total = " << _overall_peak_bw_total_GBs << " GB/s\n";
+    for(int s=0; s<_subnets; ++s) {
+        cout << "Overall Peak bandwidth subnet " << s << " = " << _overall_peak_bw_subnet_GBs[s] << " GB/s\n";
     }
   
 }

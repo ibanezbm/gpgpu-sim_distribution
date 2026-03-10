@@ -7,8 +7,8 @@
 #include <algorithm>
 
 #include "interconnect_interface.hpp"
-#include "mem_fetch.h"
-#include "chiplet_wrapper.h"
+#include "../gpgpu-sim/mem_fetch.h"
+#include "../gpgpu-sim/chiplet_wrapper.h"
 #include "chiplet_interface.hpp"
 #include "routefunc.hpp"
 #include "globals.hpp"
@@ -18,31 +18,32 @@
 #include "booksim.hpp"
 #include "intersim_config.hpp"
 #include "network.hpp"
-#include "trace.h"
+#include "interconnect_interface.hpp"
+#include "../trace.h"
 
-ChipletInterface::ChipletInterface(unsigned number_of_networks, char* g_chiplet_config_filename)
+ChipletInterface::ChipletInterface(unsigned number_of_networks, char* g_chiplet_config_filename, double chiplet_freq)
     : ChipletInterconnection()
-    , InterconnectInterface()
+    , InterconnectInterface(chiplet_freq)
 {
+    number_of_chiplets = number_of_networks;
     _icnt_config = new IntersimConfig();
     _icnt_config->ParseFile(g_chiplet_config_filename);
     this->CreateInterconnect(number_of_networks);
-
+    _traffic_manager->Init();
 }
 
-ChipletInterface::~ChipletInterface()
-{
-    this->~InterconnectInterface();
-};
+void ChipletInterface::Init() {
+  _traffic_manager->Init();
+}
 
 void ChipletInterface::push_reply(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) { 
     // it should have free buffer
-  assert(HasBuffer(input_deviceID, size));
+  assert(has_buffer_reply(input, output, size));
 
-  DPRINTF(INTERCONNECT, "Sent %d bytes from %d to %d", size, input_deviceID, output_deviceID);
+  DPRINTF(INTERCONNECT, "Sent %d bytes from %d to %d", size, input, output);
   
-  int output_icntID = _node_map[output_deviceID];
-  int input_icntID = _node_map[input_deviceID];
+  int output_icntID = _node_map[output];
+  int input_icntID = _node_map[input];
 
 #if 0
   cout<<"Call interconnect push input: "<<input<<" output: "<<output<<endl;
@@ -52,18 +53,21 @@ void ChipletInterface::push_reply(unsigned input, unsigned output, mem_fetch* mf
   //TODO: create a Inject and wrap _IssuePacket and _GeneratePacket
   unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
   int subnet;
+  if(_flit_size < 256 && n_flits == 1){
+    n_flits = 256 / _flit_size; 
+  }
   
   subnet = 1;
 
   //TODO: Remove mem_fetch to reduce dependency
   Flit::FlitType packet_type;
-  mem_fetch* mf = static_cast<mem_fetch*>(data);
 
   switch (mf->get_type()) {
     case READ_REQUEST:  packet_type = Flit::READ_REQUEST   ;break;
     case WRITE_REQUEST: packet_type = Flit::WRITE_REQUEST  ;break;
     case READ_REPLY:    packet_type = Flit::READ_REPLY     ;break;
     case WRITE_ACK:     packet_type = Flit::WRITE_REPLY    ;break;
+    case FINISH_REMOTE: packet_type = Flit::READ_REPLY    ;break;
     default:
     	{
     		cout<<"Type "<<mf->get_type()<<" is undefined!"<<endl;
@@ -71,21 +75,21 @@ void ChipletInterface::push_reply(unsigned input, unsigned output, mem_fetch* mf
     	}
   }
 
-  //TODO: _include_queuing ?
-  _traffic_manager->_GeneratePacket( input_icntID, -1, 0 /*class*/, _traffic_manager->_time, subnet, n_flits, packet_type, data, output_icntID);
+  _traffic_manager->GeneratePacket(input_icntID, -1, 0 /*class*/, _traffic_manager->getTime(), subnet, n_flits, packet_type, static_cast<void*>(mf), output_icntID);
 
 #if DOUB
   cout <<"Traffic[" << subnet << "] (mapped) sending form "<< input_icntID << " to " << output_icntID << endl;
 #endif
 }
-void ChipletInterface::push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) { 
-        // it should have free buffer
-  assert(HasBuffer(input_deviceID, size));
 
-  DPRINTF(INTERCONNECT, "Sent %d bytes from %d to %d", size, input_deviceID, output_deviceID);
+void ChipletInterface::push_request(unsigned input, unsigned output, mem_fetch* mf, unsigned int size, unsigned long cycle) { 
+  // it should have free buffer
+  assert(has_buffer_request(input, output, size));
+
+  DPRINTF(INTERCONNECT, "Sent %d bytes from %d to %d", size, input, output);
   
-  int output_icntID = _node_map[output_deviceID];
-  int input_icntID = _node_map[input_deviceID];
+  int output_icntID = _node_map[output];
+  int input_icntID = _node_map[input];
 
 #if 0
   cout<<"Call interconnect push input: "<<input<<" output: "<<output<<endl;
@@ -94,19 +98,22 @@ void ChipletInterface::push_request(unsigned input, unsigned output, mem_fetch* 
   //TODO: move to _IssuePacket
   //TODO: create a Inject and wrap _IssuePacket and _GeneratePacket
   unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
+  if(_flit_size < 256 && n_flits == 1){
+    n_flits = 256 / _flit_size; 
+  }
   int subnet;
   
   subnet = 0;
 
   //TODO: Remove mem_fetch to reduce dependency
   Flit::FlitType packet_type;
-  mem_fetch* mf = static_cast<mem_fetch*>(data);
 
   switch (mf->get_type()) {
     case READ_REQUEST:  packet_type = Flit::READ_REQUEST   ;break;
     case WRITE_REQUEST: packet_type = Flit::WRITE_REQUEST  ;break;
     case READ_REPLY:    packet_type = Flit::READ_REPLY     ;break;
     case WRITE_ACK:     packet_type = Flit::WRITE_REPLY    ;break;
+    case TO_SM:         packet_type = Flit::READ_REQUEST       ;break;
     default:
     	{
     		cout<<"Type "<<mf->get_type()<<" is undefined!"<<endl;
@@ -115,24 +122,142 @@ void ChipletInterface::push_request(unsigned input, unsigned output, mem_fetch* 
   }
 
   //TODO: _include_queuing ?
-  _traffic_manager->_GeneratePacket( input_icntID, -1, 0 /*class*/, _traffic_manager->_time, subnet, n_flits, packet_type, data, output_icntID);
+  _traffic_manager->GeneratePacket(input_icntID, -1, 0 /*class*/, _traffic_manager->getTime(), subnet, n_flits, packet_type, static_cast<void*>(mf), output_icntID);
 
 #if DOUB
   cout <<"Traffic[" << subnet << "] (mapped) sending form "<< input_icntID << " to " << output_icntID << endl;
 #endif
 }
 
-mem_fetch* ChipletInterface::top_reply(unsigned, unsigned long) { return nullptr; }
-mem_fetch* ChipletInterface::top_request(unsigned, unsigned long) { return nullptr; }
+mem_fetch* ChipletInterface::top_reply(unsigned module_number, unsigned long cycle) { 
 
-void ChipletInterface::pop_reply(unsigned, unsigned long) { }
-void ChipletInterface::pop_request(unsigned, unsigned long) { }
+    int icntID = _node_map[module_number];
+#if 0
+  cout<<"Call interconnect POP  " << output<<endl;
+#endif
 
-bool ChipletInterface::has_buffer_reply(unsigned, unsigned, unsigned int) { return false; }
-bool ChipletInterface::has_buffer_request(unsigned, unsigned, unsigned int) { return false; }
+  void* data = NULL;
 
-void ChipletInterface::step(unsigned long) { }
-void ChipletInterface::print_stats() { }
+  int subnet = 1;
+
+  int turn = _round_robin_turn[subnet][icntID];
+  for (int vc=0;(vc<_vcs) && (data==NULL);vc++) {
+    if (_boundary_buffer[subnet][icntID][turn].HasPacket()) {
+      data = _boundary_buffer[subnet][icntID][turn].TopPacket();
+    }
+    turn++;
+    if (turn == _vcs) turn = 0;
+  }
+
+  return static_cast<mem_fetch*>(data);
+
+}
+
+mem_fetch* ChipletInterface::top_request(unsigned module_number, unsigned long cycle) { 
+
+  int icntID = _node_map[module_number];
+#if 0
+  cout<<"Call interconnect POP  " << output<<endl;
+#endif
+
+  void* data = NULL;
+
+  int subnet = 0;
+
+  int turn = _round_robin_turn[subnet][icntID];
+  for (int vc=0;(vc<_vcs) && (data==NULL);vc++) {
+    if (_boundary_buffer[subnet][icntID][turn].HasPacket()) {
+      data = _boundary_buffer[subnet][icntID][turn].TopPacket();
+    }
+    turn++;
+    if (turn == _vcs) turn = 0;
+  }
+
+  return static_cast<mem_fetch*>(data);
+ }
+
+void ChipletInterface::pop_reply(unsigned module_number, unsigned long cycle) { 
+    
+  int icntID = _node_map[module_number];
+#if 0
+  cout<<"Call interconnect POP  " << output<<endl;
+#endif
+
+  void* data = NULL;
+  int subnet = 1;
+
+  int turn = _round_robin_turn[subnet][icntID];
+  for (int vc=0;(vc<_vcs) && (data==NULL);vc++) {
+    if (_boundary_buffer[subnet][icntID][turn].HasPacket()) {
+      data = _boundary_buffer[subnet][icntID][turn].PopPacket();
+    }
+    turn++;
+    if (turn == _vcs) turn = 0;
+  }
+  if (data) {
+    _round_robin_turn[subnet][icntID] = turn;
+  }
+
+  return;
+}
+void ChipletInterface::pop_request(unsigned module_number, unsigned long cycle) { 
+    
+  int icntID = _node_map[module_number];
+#if 0
+  cout<<"Call interconnect POP  " << output<<endl;
+#endif
+
+  void* data = NULL;
+
+  // 0-_n_shader-1 indicates reply(network 1), otherwise request(network 0)
+  int subnet = 0;
+
+  int turn = _round_robin_turn[subnet][icntID];
+  for (int vc=0;(vc<_vcs) && (data==NULL);vc++) {
+    if (_boundary_buffer[subnet][icntID][turn].HasPacket()) {
+      data = _boundary_buffer[subnet][icntID][turn].PopPacket();
+    }
+    turn++;
+    if (turn == _vcs) turn = 0;
+  }
+  if (data) {
+    _round_robin_turn[subnet][icntID] = turn;
+  }
+  return;
+}
+
+bool ChipletInterface::has_buffer_reply(unsigned input, unsigned output, unsigned int size) { 
+
+  bool has_buffer = false;
+  unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
+  int icntID = _node_map.find(input)->second;
+  has_buffer = _traffic_manager->getInputQueueSize(1, icntID, 0) + n_flits <= _input_buffer_capacity;
+
+  return has_buffer;
+
+}
+bool ChipletInterface::has_buffer_request(unsigned input, unsigned output, unsigned int size) { 
+  bool has_buffer = false;
+  unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
+  int icntID = _node_map.find(input)->second;
+  has_buffer = _traffic_manager->getInputQueueSize(0, icntID, 0) + n_flits <= _input_buffer_capacity;
+  return has_buffer;
+}
+void ChipletInterface::step(unsigned long cycle) { 
+
+  _traffic_manager->Step();
+  cycles++;
+
+}
+void ChipletInterface::print_stats() {
+  _traffic_manager->setDrainTime(_traffic_manager->getTime());
+  // hack: also _total_sims equals to number of kernel calls
+  _traffic_manager->incrementTotalSims();
+  _traffic_manager->UpdateStats();
+  _traffic_manager->UpdateOverallStats();
+  _traffic_manager->DisplayStats();
+  _traffic_manager->DisplayOverallStats();
+ }
 
 void ChipletInterface::CreateInterconnect(unsigned n_nodes){
     RoutingContext* rc = InitializeRoutingMap(*_icnt_config);
@@ -184,4 +309,5 @@ void ChipletInterface::CreateInterconnect(unsigned n_nodes){
     _vcs = _icnt_config->GetInt("num_vcs");
 
     _CreateBuffer();
+    _CreateNodeMap(0, 0, _traffic_manager->getNodeCount(), _icnt_config->GetInt("use_map"));
 }

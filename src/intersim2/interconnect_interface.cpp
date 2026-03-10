@@ -38,30 +38,30 @@
 #include "globals.hpp"
 #include "trafficmanager.hpp"
 #include "power_module.hpp"
-#include "mem_fetch.h"
+#include "../gpgpu-sim/mem_fetch.h"
 #include "flit.hpp"
 #include "gputrafficmanager.hpp"
 #include "booksim.hpp"
 #include "intersim_config.hpp"
 #include "network.hpp"
-#include "trace.h"
+#include "../trace.h"
 
-InterconnectInterface* InterconnectInterface::New(const char* const config_file)
+InterconnectInterface* InterconnectInterface::New(const char* const config_file, const double icnt_freq)
 {
   if (! config_file ) {
     cout << "Interconnect Requires a configfile" << endl;
     exit (-1);
   }
-  InterconnectInterface* icnt_interface = new InterconnectInterface();
+  InterconnectInterface* icnt_interface = new InterconnectInterface(icnt_freq);
   icnt_interface->_icnt_config = new IntersimConfig();
   icnt_interface->_icnt_config->ParseFile(config_file);
 
   return icnt_interface;
 }
 
-InterconnectInterface::InterconnectInterface()
+InterconnectInterface::InterconnectInterface(double icnt_freq)
 {
-
+  frequency = icnt_freq;
 }
 
 InterconnectInterface::~InterconnectInterface()
@@ -133,7 +133,7 @@ void InterconnectInterface::CreateInterconnect(unsigned n_shader, unsigned n_mem
   _vcs = _icnt_config->GetInt("num_vcs");
 
   _CreateBuffer();
-  _CreateNodeMap(_n_shader, _n_mem, _traffic_manager->_nodes, _icnt_config->GetInt("use_map"));
+  _CreateNodeMap(_n_shader, _n_mem, _traffic_manager->getNodeCount(), _icnt_config->GetInt("use_map"));
 }
 
 void InterconnectInterface::Init()
@@ -188,7 +188,7 @@ void InterconnectInterface::Push(unsigned input_deviceID, unsigned output_device
   }
 
   //TODO: _include_queuing ?
-  _traffic_manager->_GeneratePacket( input_icntID, -1, 0 /*class*/, _traffic_manager->_time, subnet, n_flits, packet_type, data, output_icntID);
+  _traffic_manager->GeneratePacket(input_icntID, -1, 0 /*class*/, _traffic_manager->getTime(), subnet, n_flits, packet_type, data, output_icntID);
 
 #if DOUB
   cout <<"Traffic[" << subnet << "] (mapped) sending form "<< input_icntID << " to " << output_icntID << endl;
@@ -228,17 +228,17 @@ void* InterconnectInterface::Pop(unsigned deviceID)
 
 void InterconnectInterface::Advance()
 {
-  _traffic_manager->_Step();
+  _traffic_manager->Step();
 }
 
 bool InterconnectInterface::Busy() const
 {
-  bool busy = !_traffic_manager->_total_in_flight_flits[0].empty();
+  bool busy = _traffic_manager->hasInFlightFlits(0);
   if (!busy) {
     for (int s = 0; s < _subnets; ++s) {
       for (unsigned n = 0; n < _n_shader+_n_mem; ++n) {
         //FIXME: if this cannot make sure _partial_packets is empty
-        assert(_traffic_manager->_input_queue[s][n][0].empty());
+        assert(_traffic_manager->isInputQueueEmpty(s, n, 0));
       }
     }
   }
@@ -262,10 +262,10 @@ bool InterconnectInterface::HasBuffer(unsigned deviceID, unsigned int size) cons
   unsigned int n_flits = size / _flit_size + ((size % _flit_size)? 1:0);
   int icntID = _node_map.find(deviceID)->second;
 
-  has_buffer = _traffic_manager->_input_queue[0][icntID][0].size() +n_flits <= _input_buffer_capacity;
+  has_buffer = _traffic_manager->getInputQueueSize(0, icntID, 0) + n_flits <= _input_buffer_capacity;
 
   if ((_subnets>1) && deviceID >= _n_shader) // deviceID is memory node
-    has_buffer = _traffic_manager->_input_queue[1][icntID][0].size() +n_flits <= _input_buffer_capacity;
+    has_buffer = _traffic_manager->getInputQueueSize(1, icntID, 0) + n_flits <= _input_buffer_capacity;
 
   return has_buffer;
 }
@@ -284,13 +284,13 @@ unsigned InterconnectInterface::GetFlitSize() const
 void InterconnectInterface::DisplayOverallStats() const
 {
   // hack: booksim2 use _drain_time and calculate delta time based on it, but we don't, change this if you have a better idea
-  _traffic_manager->_drain_time = _traffic_manager->_time;
+  _traffic_manager->setDrainTime(_traffic_manager->getTime());
   // hack: also _total_sims equals to number of kernel calls
-  _traffic_manager->_total_sims += 1;
+  _traffic_manager->incrementTotalSims();
 
-  _traffic_manager->_UpdateOverallStats();
+  _traffic_manager->UpdateOverallStats();
   _traffic_manager->DisplayOverallStats();
-  if(_traffic_manager->_print_csv_results) {
+  if(_traffic_manager->printCsvResults()) {
     _traffic_manager->DisplayOverallStatsCSV();
   }
 }
@@ -520,16 +520,17 @@ void* InterconnectInterface::_BoundaryBufferItem::PopPacket()
   return data;
 }
 
-void* InterconnectInterface::_BoundaryBufferItem::TopPacket() const
+void* InterconnectInterface::_BoundaryBufferItem::TopPacket()
 {
   assert (_packet_n);
   void* data = NULL;
-  void* temp_d = _buffer.front();
   while (data==NULL) {
     if (_tail_flag.front()) {
       data = _buffer.front();
+      return data;
     }
-    assert(temp_d == _buffer.front()); //all flits must belong to the same packet
+    _buffer.pop();
+    _tail_flag.pop();
   }
   return data;
 

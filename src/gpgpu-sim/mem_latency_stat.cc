@@ -327,6 +327,7 @@ void memory_stats_t::memlatstat_print(unsigned n_mem, unsigned gpu_mem_n_bk) {
     printf("max_icnt2sh_latency = %d \n", max_icnt2sh_latency);
     if (num_mfs) {
       printf("averagemflatency = %lld \n", mf_total_lat / num_mfs);
+      if(num_mfs_remote)
       printf("averagemflatency_remote = %lld \n", mf_total_lat_remote / num_mfs_remote);
        if (num_mfs_local)
       printf("averagemflatency_local = %lld \n", mf_total_lat_local / num_mfs_local);

@@ -93,6 +93,7 @@ tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
 #define L2 0x02
 #define DRAM 0x04
 #define ICNT 0x08
+#define CHIPLET 0x10
 
 #define MEM_LATENCY_STAT_IMPL
 
@@ -737,8 +738,8 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
   option_parser_register(opp, "-gpgpu_clock_domains", OPT_CSTR,
                          &gpgpu_clock_domains,
                          "Clock Domain Frequencies in MhZ {<Core Clock>:<ICNT "
-                         "Clock>:<L2 Clock>:<DRAM Clock>}",
-                         "500.0:2000.0:2000.0:2000.0");
+                         "Clock>:<L2 Clock>:<DRAM Clock>:<Chiplet Clock>}",
+                         "500.0:2000.0:2000.0:2000.0:2000.0");
   option_parser_register(
       opp, "-gpgpu_max_concurrent_kernel", OPT_INT32, &max_concurrent_kernel,
       "maximum kernels that can run concurrently on GPU, set this value "
@@ -1057,7 +1058,7 @@ gpgpu_sim::gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx)
       }
     }
   }
-  icnt_wrapper_init(number_of_networks);
+  icnt_wrapper_init(number_of_networks, config.icnt_freq);
   unsigned int num_cluster = m_shader_config->n_simt_clusters;
   unsigned clusters[number_of_networks] = {};
   unsigned memory_subs[number_of_networks] = {};
@@ -1083,13 +1084,13 @@ gpgpu_sim::gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx)
     cluster_dynamic_index[j] = j;
   }
 
-  chiplet_icnt = chiplet_wrapper_init(number_of_networks, config.icnt_freq);
-  traffic_information["ring_request_total_bytes"] = 0;
-  traffic_information["ring_reply_total_bytes"] = 0;
+  chiplet_icnt = chiplet_wrapper_init(number_of_networks, config.chiplet_freq);
+  traffic_information["chiplet_request_total_bytes"] = 0;
+  traffic_information["chiplet_reply_total_bytes"] = 0;
   traffic_information["local_request_total_bytes"] = 0;
   traffic_information["local_reply_total_bytes"] = 0;
-  traffic_information["ring_request_actual_bytes"] = 0;
-  traffic_information["ring_reply_actual_bytes"] = 0;
+  traffic_information["chiplet_request_actual_bytes"] = 0;
+  traffic_information["chiplet_reply_actual_bytes"] = 0;
   traffic_information["local_request_actual_bytes"] = 0;
   traffic_information["local_reply_actual_bytes"] = 0;
 
@@ -1173,20 +1174,22 @@ enum divergence_support_t gpgpu_sim::simd_model() const {
 }
 
 void gpgpu_sim_config::init_clock_domains(void) {
-  sscanf(gpgpu_clock_domains, "%lf:%lf:%lf:%lf", &core_freq, &icnt_freq,
-         &l2_freq, &dram_freq);
+  sscanf(gpgpu_clock_domains, "%lf:%lf:%lf:%lf:%lf", &core_freq, &icnt_freq,
+         &l2_freq, &dram_freq, &chiplet_freq);
   core_freq = core_freq MhZ;
   icnt_freq = icnt_freq MhZ;
   l2_freq = l2_freq MhZ;
   dram_freq = dram_freq MhZ;
+  chiplet_freq = chiplet_freq MhZ;
   core_period = 1 / core_freq;
   icnt_period = 1 / icnt_freq;
   dram_period = 1 / dram_freq;
   l2_period = 1 / l2_freq;
-  printf("GPGPU-Sim uArch: clock freqs: %lf:%lf:%lf:%lf\n", core_freq,
-         icnt_freq, l2_freq, dram_freq);
-  printf("GPGPU-Sim uArch: clock periods: %.20lf:%.20lf:%.20lf:%.20lf\n",
-         core_period, icnt_period, l2_period, dram_period);
+  chiplet_period = 1 / chiplet_freq;
+  printf("GPGPU-Sim uArch: clock freqs: %lf:%lf:%lf:%lf:%lf\n", core_freq,
+         icnt_freq, l2_freq, dram_freq, chiplet_freq);
+  printf("GPGPU-Sim uArch: clock periods: %.20lf:%.20lf:%.20lf:%.20lf:%.20lf\n",
+         core_period, icnt_period, l2_period, dram_period, chiplet_period);
 }
 
 void gpgpu_sim::reinit_clock_domains(void) {
@@ -1194,6 +1197,7 @@ void gpgpu_sim::reinit_clock_domains(void) {
   dram_time = 0;
   icnt_time = 0;
   l2_time = 0;
+  chiplet_time = 0;
 }
 
 bool gpgpu_sim::active() {
@@ -1283,6 +1287,7 @@ void gpgpu_sim::init() {
     for(unsigned int j = 0; j < m_config.m_shader_config.n_chiplet; j++)
       icnt_init[j](j);
   }
+  chiplet_icnt->Init();
 }
 
 void gpgpu_sim::update_stats() {
@@ -1317,11 +1322,11 @@ void gpgpu_sim::print_stats(unsigned long long streamID) {
 
   if (g_network_mode) {
     printf(
-        "----------------------------Interconnect-DETAILS----------------------"
+        "----------------------------Chiplet-Interconnect-DETAILS----------------------"
         "----------\n");
     chiplet_icnt->print_stats();
     for(unsigned int j = 0; j < m_shader_config->n_chiplet; j++){
-      printf("----------Interconnection number %d----------\n", j);
+      printf("\n\n----------Interconnection number %d----------\n", j);
       icnt_display_stats[j](j);
       icnt_display_overall_stats[j](j);
     }
@@ -1671,15 +1676,15 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
     printf("n_total_threads[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_total_threads);
     printf("n_total_threads_remote[%d] = %d\n",i, this->m_cluster[i]->m_core[0]->n_total_threads_remote);
   }
-  printf("ring_request_total_bytes = %lld\n",traffic_information["ring_request_total_bytes"]);
-  printf("ring_reply_total_bytes = %lld\n",traffic_information["ring_reply_total_bytes"]);
+  printf("chiplet_request_total_bytes = %lld\n",traffic_information["chiplet_request_total_bytes"]);
+  printf("chiplet_reply_total_bytes = %lld\n",traffic_information["chiplet_reply_total_bytes"]);
   printf("local_request_total_bytes = %lld\n",traffic_information["local_request_total_bytes"]);
   printf("local_reply_total_bytes = %lld\n",traffic_information["local_reply_total_bytes"]);
   printf("total_cycles_icnt = %lld\n", this->chiplet_icnt->cycles);
   printf("frecuence_icnt = %f\n", this->m_config.icnt_freq);
   printf("seconds_icnt = %f\n", this->chiplet_icnt->cycles/this->m_config.icnt_freq);
-  printf("ring_request_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_request_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
-  printf("ring_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["ring_reply_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
+  printf("Chiplet_request_total_bytes/s (MB/s) = %f\n",(traffic_information["chiplet_request_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.chiplet_freq))/1000000);
+  printf("Chiplet_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["chiplet_reply_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.chiplet_freq))/1000000);
   printf("local_request_total_bytes/s (MB/s) = %f\n",(traffic_information["local_request_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
   printf("local_reply_total_bytes/s (MB/s) = %f\n",(traffic_information["local_reply_total_bytes"]/(this->chiplet_icnt->cycles/this->m_config.icnt_freq))/1000000);
 
@@ -2013,7 +2018,7 @@ void dram_t::dram_log(int task) {
 
 // Find next clock domain and increment its time
 int gpgpu_sim::next_clock_domain(void) {
-  double smallest = min3(core_time, icnt_time, dram_time);
+  double smallest = min4(core_time, icnt_time, dram_time, chiplet_time);
   int mask = 0x00;
   if (l2_time <= smallest) {
     smallest = l2_time;
@@ -2031,6 +2036,10 @@ int gpgpu_sim::next_clock_domain(void) {
   if (core_time <= smallest) {
     mask |= CORE;
     core_time += m_config.core_period;
+  }
+  if (chiplet_time <= smallest) {
+    mask |= CHIPLET;
+    chiplet_time += m_config.chiplet_period;
   }
   return mask;
 }
@@ -2086,8 +2095,8 @@ void gpgpu_sim::cycle() {
             // if (!mf->get_is_write())
             mf->set_return_timestamp(gpu_sim_cycle + gpu_tot_sim_cycle);
             mf->set_status(IN_ICNT_TO_SHADER, gpu_sim_cycle + gpu_tot_sim_cycle);
-            traffic_information["local_reply_actual_bytes"] += mf->size();
-            traffic_information["local_reply_total_bytes"] += mf->size();
+            traffic_information["local_reply_actual_bytes"] += response_size;
+            traffic_information["local_reply_total_bytes"] += response_size;
             ::icnt_push[m_memory_sub_partition[i]->get_chiplet()](
                   m_shader_config->mem2device(m_memory_sub_partition[i]->get_chiplet(),
                   m_memory_sub_partition[i]->get_device()), mf->get_tpc()/m_config.m_shader_config.n_chiplet, mf,
@@ -2103,8 +2112,8 @@ void gpgpu_sim::cycle() {
             mf->set_return_timestamp(gpu_sim_cycle + gpu_tot_sim_cycle);
             mf->set_status(IN_ICNT_TO_SHADER, gpu_sim_cycle + gpu_tot_sim_cycle);
             if(mf->get_pc()!=m_config.get_remote_pc() || !mf->remote){
-              traffic_information["ring_reply_total_bytes"] += mf->size();
-              traffic_information["ring_reply_actual_bytes"] += mf->size();
+              traffic_information["chiplet_reply_total_bytes"] += response_size;
+              traffic_information["chiplet_reply_actual_bytes"] += response_size;
               chiplet_icnt->push_reply(m_memory_sub_partition[i]->get_chiplet(), mf->get_chiplet(), mf,
                         response_size, gpu_sim_cycle + gpu_tot_sim_cycle);
             }
@@ -2183,9 +2192,9 @@ void gpgpu_sim::cycle() {
          
         }else if (mf->get_sub_partition_id() == i){
           if (!mf->get_is_write() && !mf->isatomic()){
-            traffic_information["ring_request_actual_bytes"] -= mf->get_ctrl_size();
+            traffic_information["chiplet_request_actual_bytes"] -= mf->get_ctrl_size();
           }else{
-            traffic_information["ring_request_actual_bytes"] -= mf->size();
+            traffic_information["chiplet_request_actual_bytes"] -= mf->size();
           }
           if (mf->get_access_type() != INST_ACC_R && !mf->get_is_write() &&
             !mf->isatomic()) {
@@ -2228,9 +2237,9 @@ void gpgpu_sim::cycle() {
         
         }else if (mf2->get_sub_partition_id() == i){
           if (!mf2->get_is_write() && !mf2->isatomic()){
-            traffic_information["ring_request_actual_bytes"] -= mf2->get_ctrl_size();
+            traffic_information["chiplet_request_actual_bytes"] -= mf2->get_ctrl_size();
           }else{
-            traffic_information["ring_request_actual_bytes"] -= mf2->size();
+            traffic_information["chiplet_request_actual_bytes"] -= mf2->size();
           }
           if (mf2->get_access_type() != INST_ACC_R && !mf2->get_is_write() &&
           !mf2->isatomic()) {
@@ -2280,8 +2289,11 @@ void gpgpu_sim::cycle() {
   if (clock_mask & ICNT) {
     for(unsigned i = 0; i < m_config.m_shader_config.n_chiplet; i++){
       icnt_transfer[i](i);
-      chiplet_icnt->step(gpu_sim_cycle + gpu_tot_sim_cycle);
     }
+  }
+
+  if (clock_mask & CHIPLET) {
+    chiplet_icnt->step(gpu_sim_cycle + gpu_tot_sim_cycle);
   }
 
   if (clock_mask & CORE) {

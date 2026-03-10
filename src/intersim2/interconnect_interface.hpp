@@ -47,9 +47,9 @@ class RoutingContext;
 
 class InterconnectInterface {
 public:
-  InterconnectInterface();
+  InterconnectInterface(double icnt_freq = 1.0);
   virtual ~InterconnectInterface();
-  static InterconnectInterface* New(const char* const config_file);
+  static InterconnectInterface* New(const char* const config_file, const double icnt_freq);
   virtual void CreateInterconnect(unsigned n_shader,  unsigned n_mem);
   
   //node side functions
@@ -74,6 +74,8 @@ public:
   Stats* GetIcntStats(const string & name) const;
   
   Flit* GetEjectedFlit(int subnet, int node);
+
+  double GetFrequency() const { return frequency; }
   
 protected:
   
@@ -83,7 +85,7 @@ protected:
     inline unsigned Size(void) const { return _buffer.size(); }
     inline bool HasPacket() const { return _packet_n; }
     void* PopPacket();
-    void* TopPacket() const;
+    void* TopPacket();
     void PushFlitData(void* data,bool is_tail);
     
   private:
@@ -112,6 +114,7 @@ protected:
   
   GPUTrafficManager* _traffic_manager;
   unsigned _flit_size;
+  double frequency;
   IntersimConfig* _icnt_config;
   unsigned _n_shader, _n_mem;
   vector<Network *> _net;
