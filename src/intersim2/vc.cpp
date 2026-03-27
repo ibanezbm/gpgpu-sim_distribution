@@ -51,6 +51,7 @@ VC::VC( const Configuration& config, int outputs,
     _state(idle), _out_port(-1), _out_vc(-1), _pri(0), _watched(false), 
     _expected_pid(-1), _last_id(-1), _last_pid(-1)
 {
+  _tm = config.tm;
   _lookahead_routing = !config.GetInt("routing_delay");
   _route_set = _lookahead_routing ? NULL : new OutputSet( );
 
@@ -96,7 +97,7 @@ void VC::AddFlit( Flit *f )
     
   // update flit priority before adding to VC buffer
   if(_pri_type == local_age_based) {
-    f->pri = numeric_limits<int>::max() - GetSimTime();
+    f->pri = numeric_limits<int>::max() - _tm->getTime();
     assert(f->pri >= 0);
   } else if(_pri_type == hop_count_based) {
     f->pri = f->hops;
@@ -129,7 +130,7 @@ void VC::SetState( eVCState s )
   Flit * f = FrontFlit();
   
   if(f && f->watch)
-    *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+    *gWatchOut << _tm->getTime() << " | " << FullName() << " | "
 		<< "Changing state from " << VC::VCSTATE[_state]
 		<< " to " << VC::VCSTATE[s] << "." << endl;
   
@@ -168,7 +169,7 @@ void VC::UpdatePriority()
 	if(bf->pri > df->pri) df = bf;
       }
       if((df != f) && (df->watch || f->watch)) {
-	*gWatchOut << GetSimTime() << " | " << FullName() << " | "
+	*gWatchOut << _tm->getTime() << " | " << FullName() << " | "
 		    << "Flit " << df->id
 		    << " donates priority to flit " << f->id
 		    << "." << endl;
@@ -176,7 +177,7 @@ void VC::UpdatePriority()
       f = df;
     }
     if(f->watch)
-      *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+      *gWatchOut << _tm->getTime() << " | " << FullName() << " | "
 		  << "Flit " << f->id
 		  << " sets priority to " << f->pri
 		  << "." << endl;

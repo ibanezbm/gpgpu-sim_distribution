@@ -44,12 +44,13 @@
 #include <sstream>
 #include "qtree.hpp"
 #include "misc_utils.hpp"
+#include "trafficmanager.hpp"
 
 QTree::QTree( const Configuration& config, const string & name, RoutingContext* rc )
 : Network ( config, name, rc )
 {
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 

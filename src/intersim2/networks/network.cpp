@@ -125,7 +125,20 @@ Network * Network::New(const Configuration & config, const string & name, Routin
   return n;
 }
 
-void Network::_Alloc( )
+void Network::Reset( )
+{
+  for ( int c = 0; c < _channels; ++c ) {
+    _chan[c]->Reset( );
+  }
+  for (size_t j = 0; j < _eject.size(); j++) {
+    _eject[j]->Reset( );
+  }
+  for (size_t j = 0; j < _inject.size(); j++) {
+    _inject[j]->Reset( );
+  }
+}
+
+void Network::_Alloc( const Configuration &config )
 {
   assert( ( _size != -1 ) && 
 	  ( _nodes != -1 ) && 
@@ -145,12 +158,12 @@ void Network::_Alloc( )
   for ( int s = 0; s < _nodes; ++s ) {
     ostringstream name;
     name << Name() << "_fchan_ingress" << s;
-    _inject[s] = new FlitChannel(this, name.str(), _classes);
+    _inject[s] = new FlitChannel(config, this, name.str(), _classes);
     _inject[s]->SetSource(NULL, s);
     _timed_modules.push_back(_inject[s]);
     name.str("");
     name << Name() << "_cchan_ingress" << s;
-    _inject_cred[s] = new CreditChannel(this, name.str());
+    _inject_cred[s] = new CreditChannel(config, this, name.str());
     _timed_modules.push_back(_inject_cred[s]);
   }
   _eject.resize(_nodes);
@@ -158,12 +171,12 @@ void Network::_Alloc( )
   for ( int d = 0; d < _nodes; ++d ) {
     ostringstream name;
     name << Name() << "_fchan_egress" << d;
-    _eject[d] = new FlitChannel(this, name.str(), _classes);
+    _eject[d] = new FlitChannel(config, this, name.str(), _classes);
     _eject[d]->SetSink(NULL, d);
     _timed_modules.push_back(_eject[d]);
     name.str("");
     name << Name() << "_cchan_egress" << d;
-    _eject_cred[d] = new CreditChannel(this, name.str());
+    _eject_cred[d] = new CreditChannel(config, this, name.str());
     _timed_modules.push_back(_eject_cred[d]);
   }
   _chan.resize(_channels);
@@ -171,21 +184,21 @@ void Network::_Alloc( )
   for ( int c = 0; c < _channels; ++c ) {
     ostringstream name;
     name << Name() << "_fchan_" << c;
-    _chan[c] = new FlitChannel(this, name.str(), _classes);
+    _chan[c] = new FlitChannel(config, this, name.str(), _classes);
     _timed_modules.push_back(_chan[c]);
     name.str("");
     name << Name() << "_cchan_" << c;
-    _chan_cred[c] = new CreditChannel(this, name.str());
+    _chan_cred[c] = new CreditChannel(config, this, name.str());
     _timed_modules.push_back(_chan_cred[c]);
   }
 }
 
-void Network::ReadInputs( )
+void Network::ReadInputs( bool chiplet_network )
 {
   for(deque<TimedModule *>::const_iterator iter = _timed_modules.begin();
       iter != _timed_modules.end();
       ++iter) {
-    (*iter)->ReadInputs( );
+    (*iter)->ReadInputs( chiplet_network);
   }
 }
 

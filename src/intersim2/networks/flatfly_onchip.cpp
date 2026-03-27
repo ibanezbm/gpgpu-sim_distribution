@@ -55,7 +55,7 @@
 #include "random_utils.hpp"
 #include "misc_utils.hpp"
 #include "globals.hpp"
-
+#include "trafficmanager.hpp"
 
 
 //#define DEBUG_FLATFLY
@@ -70,7 +70,7 @@ FlatFlyOnChip::FlatFlyOnChip( const Configuration &config, const string & name, 
 {
 
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 
@@ -911,7 +911,7 @@ void ugal_flatfly_onchip( const RoutingContext* rc, const Router *r, const Flit 
 	_ran_intm = find_ran_intm(flatfly_transformation(f->src, rc->gC), dest, rc->gK, rc->gC, rc->gN);
 	tmp_out_port =  flatfly_outport(dest, rID, rc->gK, rc->gC, rc->gN);
 	if (f->watch){
-	  *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+	  *gWatchOut << r->_tm->getTime() << " | " << r->FullName() << " | "
 		     << " MIN tmp_out_port: " << tmp_out_port;
 	}
 
@@ -921,7 +921,7 @@ void ugal_flatfly_onchip( const RoutingContext* rc, const Router *r, const Flit 
 	tmp_out_port =  flatfly_outport(_ran_intm, rID, rc->gK, rc->gC, rc->gN);
 
 	if (f->watch){
-	  *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+	  *gWatchOut << r->_tm->getTime() << " | " << r->FullName() << " | "
 		     << " NONMIN tmp_out_port: " << tmp_out_port << endl;
 	}
 	if (_ran_intm >= rID*_concentration && _ran_intm < (rID+1)*_concentration) {
@@ -1084,7 +1084,7 @@ void ugal_pni_flatfly_onchip( const RoutingContext* rc, const Router *r, const F
 	_ran_intm = find_ran_intm(flatfly_transformation(f->src, rc->gC), dest, rc->gK, rc->gC, rc->gN);
 	tmp_out_port =  flatfly_outport(dest, rID, rc->gK, rc->gC, rc->gN);
 	if (f->watch){
-	  *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+	  *gWatchOut << r->_tm->getTime() << " | " << r->FullName() << " | "
 		     << " MIN tmp_out_port: " << tmp_out_port;
 	}
 
@@ -1094,7 +1094,7 @@ void ugal_pni_flatfly_onchip( const RoutingContext* rc, const Router *r, const F
 	tmp_out_port =  flatfly_outport(_ran_intm, rID, rc->gK, rc->gC, rc->gN);
 
 	if (f->watch){
-	  *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+	  *gWatchOut << r->_tm->getTime() << " | " << r->FullName() << " | "
 		     << " NONMIN tmp_out_port: " << tmp_out_port << endl;
 	}
 	if (_ran_intm >= rID*_concentration && _ran_intm < (rID+1)*_concentration) {

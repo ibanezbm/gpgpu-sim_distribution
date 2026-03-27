@@ -2234,7 +2234,7 @@ bool l1_cache::normal_mode(){
       //TODO: CHEKEAR TODOS LOS VALUES PARA SABER SI PODEMOS IR QUITANDO PETICIONES
       mem_fetch* mf = values.front();
       unsigned chiplet_mf = m_gpu->m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
-  //printf("AAAAA %lld %ld ", mf->get_addr(), m_mshrs.m_data[m_config.mshr_addr(mf->get_addr())].m_list.size());
+  //printf(" %lld %ld ", mf->get_addr(), m_mshrs.m_data[m_config.mshr_addr(mf->get_addr())].m_list.size());
   //printf(" %d %d %d %d\n",m_core->m_mem_access_per_warp[pair.first] <= m_gpu->get_config().get_min_threads_remote_warp(),
 
       if (!m_memport->full(mf->size(), mf->get_is_write(), mf)) {

@@ -116,6 +116,25 @@ void InterconnectInterface::CreateInterconnect(unsigned n_shader, unsigned n_mem
   _traffic_manager = static_cast<GPUTrafficManager*>(TrafficManager::New( *_icnt_config, _net, this, rc)) ;
   _flit_size = _icnt_config->GetInt( "flit_size" );
 
+  for (int i = 0; i < _subnets; ++i) {
+    for (size_t j = 0; j < _net[i]->_eject.size(); j++) {
+      _net[i]->_eject[j]->_tm = _traffic_manager;
+      _net[i]->_eject_cred[j]->_tm = _traffic_manager;
+    }
+    for (size_t j = 0; j < _net[i]->_inject.size(); j++) {
+      _net[i]->_inject[j]->_tm = _traffic_manager;
+      _net[i]->_inject_cred[j]->_tm = _traffic_manager;
+    }
+    for (size_t j = 0; j < _net[i]->_chan.size(); j++) {
+      _net[i]->_chan[j]->_tm = _traffic_manager;
+      _net[i]->_chan_cred[j]->_tm = _traffic_manager;
+    }
+    for (size_t j = 0; j < _net[i]->_routers.size(); j++) {
+      _net[i]->_routers[j]->_tm = _traffic_manager;
+    }
+  }
+
+
   // Config for interface buffers
   if (_icnt_config->GetInt("ejection_buffer_size")) {
     _ejection_buffer_capacity = _icnt_config->GetInt( "ejection_buffer_size" ) ;
@@ -505,41 +524,30 @@ void InterconnectInterface::_DisplayMap(int dim,int count)
 
 void* InterconnectInterface::_BoundaryBufferItem::PopPacket()
 {
-  assert (_packet_n);
-  void * data = NULL;
-  void * flit_data = _buffer.front();
-  while (data == NULL) {
-    assert(flit_data == _buffer.front()); //all flits must belong to the same packet
-    if (_tail_flag.front()) {
-      data = _buffer.front();
-      _packet_n--;
-    }
-    _buffer.pop();
-    _tail_flag.pop();
+  if(_packet_n == 0) return NULL;
+  void* data = NULL;
+  while(!_buffer.empty()) {
+    data = _buffer.front().data;
+    bool tail = _buffer.front().tail;
+    _buffer.pop_front();
+    if(tail) { _packet_n--; return data; }
   }
-  return data;
+  return NULL;
 }
 
 void* InterconnectInterface::_BoundaryBufferItem::TopPacket()
 {
-  assert (_packet_n);
-  void* data = NULL;
-  while (data==NULL) {
-    if (_tail_flag.front()) {
-      data = _buffer.front();
-      return data;
-    }
-    _buffer.pop();
-    _tail_flag.pop();
+  if(_packet_n == 0) return NULL;
+  for(const auto& it : _buffer) {
+    if(it.tail) return it.data;
   }
-  return data;
+  return NULL;
 
 }
 
 void InterconnectInterface::_BoundaryBufferItem::PushFlitData(void* data,bool is_tail)
 {
-  _buffer.push(data);
-  _tail_flag.push(is_tail);
+  _buffer.push_back({data, is_tail});
   if (is_tail) {
     _packet_n++;
   }

@@ -63,7 +63,7 @@ AnyNet::AnyNet( const Configuration &config, const string & name, RoutingContext
 
   router_list.resize(2);
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 

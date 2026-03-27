@@ -37,6 +37,7 @@
 #include "kncube.hpp"
 #include "random_utils.hpp"
 #include "misc_utils.hpp"
+#include "trafficmanager.hpp"
  //#include "iq_router.hpp"
 
 
@@ -46,7 +47,7 @@ Network( config, name, rc )
   _mesh = mesh;
 
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 

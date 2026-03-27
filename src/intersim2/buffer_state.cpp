@@ -38,6 +38,7 @@
 #include <limits>
 
 #include "booksim.hpp"
+#include "trafficmanager.hpp"
 #include "buffer_state.hpp"
 #include "random_utils.hpp"
 #include "globals.hpp"
@@ -48,6 +49,7 @@
 BufferState::BufferPolicy::BufferPolicy(Configuration const & config, BufferState * parent, const string & name)
 : Module(parent, name), _buffer_state(parent)
 {
+  _tm = config.tm;
 }
 
 void BufferState::BufferPolicy::TakeBuffer(int vc) {
@@ -389,7 +391,7 @@ void BufferState::FeedbackSharedBufferPolicy::SetMinLatency(int min_latency)
 void BufferState::FeedbackSharedBufferPolicy::SendingFlit(Flit const * const f)
 {
   SharedBufferPolicy::SendingFlit(f);
-  _flit_sent_time[f->vc].push(GetSimTime());
+  _flit_sent_time[f->vc].push(_tm->getTime());
 }
 
 int BufferState::FeedbackSharedBufferPolicy::_ComputeRTT(int vc, int last_rtt) const
@@ -414,7 +416,7 @@ int BufferState::FeedbackSharedBufferPolicy::_ComputeMaxSlots(int vc) const
 {
   int max_slots = _occupancy_limit[vc];
   if(!_flit_sent_time[vc].empty()) {
-    int min_rtt = GetSimTime() - _flit_sent_time[vc].front();
+    int min_rtt = _tm->getTime() - _flit_sent_time[vc].front();
     int rtt = _ComputeRTT(vc, min_rtt);
     int limit = _ComputeLimit(rtt);
     max_slots = min(max_slots, limit);
@@ -426,7 +428,7 @@ void BufferState::FeedbackSharedBufferPolicy::FreeSlotFor(int vc)
 {
   SharedBufferPolicy::FreeSlotFor(vc);
   assert(!_flit_sent_time[vc].empty());
-  int const last_rtt = GetSimTime() - _flit_sent_time[vc].front();
+  int const last_rtt = _tm->getTime() - _flit_sent_time[vc].front();
 #ifdef DEBUG_FEEDBACK
   cerr << FullName() << ": Probe for VC "
        << vc << " came back after "
@@ -539,6 +541,7 @@ void BufferState::SimpleFeedbackSharedBufferPolicy::FreeSlotFor(int vc)
 BufferState::BufferState( const Configuration& config, Module *parent, const string& name ) : 
   Module( parent, name ), _occupancy(0)
 {
+  _tm = config.tm;
   _vcs = config.GetInt( "num_vcs" );
   _size = config.GetInt("buf_size");
   if(_size < 0) {

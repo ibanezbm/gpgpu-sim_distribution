@@ -29,6 +29,7 @@
 #define _INTERCONNECT_INTERFACE_HPP_
 
 #include <vector>
+#include <deque>
 #include <queue>
 #include <iostream>
 #include <map>
@@ -89,8 +90,8 @@ protected:
     void PushFlitData(void* data,bool is_tail);
     
   private:
-    queue<void *> _buffer;
-    queue<bool> _tail_flag;
+    struct BoundaryItem { void* data; bool tail; };
+    deque<BoundaryItem> _buffer;
     int _packet_n;
   };
   typedef queue<Flit*> _EjectionBufferItem;

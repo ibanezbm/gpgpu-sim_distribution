@@ -49,10 +49,11 @@ protected:
   
   // record size of _partial_packets for each subnet
   vector<vector<vector<list<Flit *> > > > _input_queue;
+  bool chiplet_network = false;
   
 public:
   
-  GPUTrafficManager( const Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface, RoutingContext* rc = nullptr);
+  GPUTrafficManager( Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface, RoutingContext* rc = nullptr);
   virtual ~GPUTrafficManager( );
   
   // correspond to TrafficManger::Run/SingleSim
@@ -71,7 +72,7 @@ public:
   inline void UpdateOverallStats() { _UpdateOverallStats(); }
   inline bool printCsvResults() const { return _print_csv_results; }
   void calculate_bandwidth();
-  
+  inline void set_chiplet_network(bool value) { chiplet_network = value; }
   
   
   //    virtual void WriteStats( ostream & os = cout ) const;

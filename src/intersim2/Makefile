@@ -87,7 +87,8 @@ CPP_SRCS =  \
    main.cpp \
    gputrafficmanager.cpp \
    intersim_config.cpp \
-   chiplet_interface.cpp
+   chiplet_interface.cpp \
+   channel.cpp \
 
 ifeq ($(CREATE_LIBRARY),1)
 CPP_SRCS += $(INTERFACE)

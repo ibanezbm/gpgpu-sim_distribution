@@ -166,7 +166,7 @@ public:
 	       int inputs, int outputs, RoutingContext* rc );
   virtual ~EventRouter( );
 
-  virtual void ReadInputs( );
+  virtual void ReadInputs( bool chiplet_network );
   virtual void WriteOutputs( );
 
   virtual int GetUsedCredit(int o) const {return 0;}

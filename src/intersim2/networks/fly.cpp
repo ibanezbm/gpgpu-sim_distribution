@@ -31,6 +31,7 @@
 
 #include "fly.hpp"
 #include "misc_utils.hpp"
+#include "trafficmanager.hpp"
 
 //#define DEBUG_FLY
 
@@ -38,7 +39,7 @@ KNFly::KNFly( const Configuration &config, const string & name, RoutingContext* 
 Network( config, name, rc )
 {
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 

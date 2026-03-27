@@ -51,12 +51,13 @@
 
 #include "tree4.hpp"
 #include "misc_utils.hpp"
+#include "trafficmanager.hpp"
 
 Tree4::Tree4( const Configuration& config, const string & name, RoutingContext* rc )
 : Network ( config, name, rc )
 {
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 

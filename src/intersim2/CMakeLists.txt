@@ -47,6 +47,7 @@ list(APPEND intersim_SRC
         config_utils.cpp
         credit.cpp
         flitchannel.cpp
+        channel.cpp
         flit.cpp
         gputrafficmanager.cpp
         injection.cpp

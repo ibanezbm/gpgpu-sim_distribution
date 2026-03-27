@@ -5700,7 +5700,6 @@ void simt_core_cluster::icnt_cycle() {
       }else if(mf->get_type() == FINISH_REMOTE){
         m_gpu->traffic_information["chiplet_reply_actual_bytes"] -= 8;
         if(m_core[0]->flush_remote.find(mf->get_wid()) != m_core[0]->flush_remote.end()){
-          //TODO CAMBIAR POR SOLO UN HILO
           
           if(m_gpu->get_config().get_end_remote() == 0){
             for (unsigned i = 0; i < mf->get_active_dynamic_warp_mask().size(); i++){
@@ -5820,7 +5819,7 @@ void simt_core_cluster::icnt_cycle() {
       }
     }
   }
-  mem_fetch *mf2 = m_gpu->chiplet_icnt->top_reply(m_chiplet,m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  /*mem_fetch *mf2 = m_gpu->chiplet_icnt->top_reply(m_chiplet,m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   if(!mf2){ 
       if(!m_reply_fifo.empty()){
       mem_fetch* mem_reply = m_reply_fifo.back();
@@ -5956,7 +5955,7 @@ void simt_core_cluster::icnt_cycle() {
         m_response_fifo.push_back(mf2);
         m_stats->n_mem_to_simt[m_cluster_id] += mf2->get_num_flits(false);
     }
-  }
+  }*/
 }
 
 void shader_core_ctx::add_supervised_dynamic_warp_id(shd_warp_t * warp) {

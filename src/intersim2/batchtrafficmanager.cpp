@@ -33,7 +33,7 @@
 #include "random_utils.hpp"
 #include "batchtrafficmanager.hpp"
 
-BatchTrafficManager::BatchTrafficManager( const Configuration &config, 
+BatchTrafficManager::BatchTrafficManager( Configuration &config, 
 					  const vector<Network *> & net, RoutingContext* rc)
 : TrafficManager(config, net, nullptr, rc), _last_id(-1), _last_pid(-1), 
    _overall_min_batch_time(0), _overall_avg_batch_time(0), 

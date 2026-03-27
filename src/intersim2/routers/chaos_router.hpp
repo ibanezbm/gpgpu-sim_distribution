@@ -111,7 +111,7 @@ public:
 
   virtual ~ChaosRouter( );
 
-  virtual void ReadInputs( );
+  virtual void ReadInputs( bool chiplet_network );
   virtual void WriteOutputs( );
 
   virtual int GetUsedCredit(int out) const {return 0;}

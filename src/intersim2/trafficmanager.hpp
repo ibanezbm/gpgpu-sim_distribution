@@ -316,10 +316,10 @@ protected:
 
 public:
 
-  static TrafficManager * New(Configuration const & config, 
+  static TrafficManager * New(Configuration & config, 
 			      vector<Network *> const & net, InterconnectInterface* icnt_interface = nullptr, RoutingContext* rc = nullptr);
 
-  TrafficManager( const Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface = nullptr, RoutingContext* rc = nullptr);
+  TrafficManager( Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface = nullptr, RoutingContext* rc = nullptr);
   virtual ~TrafficManager( );
 
   bool Run( );

@@ -52,7 +52,7 @@
 #include "fattree.hpp"
 #include "misc_utils.hpp"
 #include "routefunc.hpp"
-
+#include "trafficmanager.hpp"
 
  //#define FATTREE_DEBUG
 
@@ -62,7 +62,7 @@ FatTree::FatTree( const Configuration& config,const string & name, RoutingContex
   
 
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 
 }

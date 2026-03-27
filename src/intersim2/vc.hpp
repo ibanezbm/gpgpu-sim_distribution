@@ -35,6 +35,7 @@
 #include "routefunc.hpp"
 #include "config_utils.hpp"
 #include "module.hpp"
+#include "trafficmanager.hpp"
 
 class VC : public Module {
 public:
@@ -133,6 +134,7 @@ public:
   void SetWatch( bool watch = true );
   bool IsWatched( ) const;
   void Display( ostream & os = cout ) const;
+  TrafficManager* _tm;
 };
 
 #endif 

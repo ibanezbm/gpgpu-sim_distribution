@@ -35,6 +35,8 @@
 #include<map>
 #include<vector>
 
+class TrafficManager;
+
 class Configuration {
   FILE * _config_file;
   string _config_string;
@@ -79,6 +81,7 @@ public:
     return _float_map;
   }
 
+  TrafficManager* tm;
 };
 
 bool ParseArgs(Configuration * cf, int argc, char **argv);

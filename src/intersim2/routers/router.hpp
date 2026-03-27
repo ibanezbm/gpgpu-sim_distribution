@@ -39,6 +39,8 @@
 #include "config_utils.hpp"
 #include "routefunc.hpp"
 
+class TrafficManager;
+
 typedef Channel<Credit> CreditChannel;
 
 class Router : public TimedModule {
@@ -112,7 +114,7 @@ public:
     return _output_channels[output];
   }
 
-  virtual void ReadInputs( ) = 0;
+  virtual void ReadInputs( bool chiplet_network ) = 0;
   virtual void Evaluate( );
   virtual void WriteOutputs( ) = 0;
 
@@ -198,6 +200,7 @@ public:
 
   inline int NumInputs() const {return _inputs;}
   inline int NumOutputs() const {return _outputs;}
+  TrafficManager *_tm;
 };
 
 #endif

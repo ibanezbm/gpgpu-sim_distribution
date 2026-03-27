@@ -1032,6 +1032,14 @@ gpgpu_sim::gpgpu_sim(gpgpu_sim_config &config, gpgpu_context *ctx)
   partiton_replys_in_parallel = 0;
   partiton_replys_in_parallel_total = 0;
 
+  // McPAT initialization function. Called on first launch of GPU
+#ifdef GPGPUSIM_POWER_MODEL
+  if (m_config.g_power_simulation_enabled) {
+    init_mcpat(m_config, m_gpgpusim_wrapper, m_config.gpu_stat_sample_freq,
+               gpu_tot_sim_insn, gpu_sim_insn);
+  }
+#endif
+
   unsigned number_of_networks = m_shader_config->n_chiplet;
   last_streamID = -1;
 
@@ -2179,97 +2187,97 @@ void gpgpu_sim::cycle() {
           partiton_reqs_in_parallel_per_cycle++;
           push = true;
         }
-      }
 
-      unsigned mem_chiplet = m_memory_sub_partition[i]->get_chiplet();
-      mem_fetch *mf = chiplet_icnt->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-      if (mf != NULL){
-        if(m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet() != mem_chiplet && 
-        chiplet_icnt->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(),0)){
-          chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-          chiplet_icnt->push_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(), mf, 
-                            mf->get_is_write() ? mf->get_ctrl_size() : mf->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
-         
-        }else if (mf->get_sub_partition_id() == i){
-          if (!mf->get_is_write() && !mf->isatomic()){
-            traffic_information["chiplet_request_actual_bytes"] -= mf->get_ctrl_size();
-          }else{
-            traffic_information["chiplet_request_actual_bytes"] -= mf->size();
-          }
-          if (mf->get_access_type() != INST_ACC_R && !mf->get_is_write() &&
-            !mf->isatomic()) {
-              if (mf->get_type() == TO_SM && mf->get_pc()== m_config.get_remote_pc()){
-                chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-                unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()];
-                unsigned finded = false;
-                if(!finded){
-                  position_to_index_dynamic.push_back(cluster_executed);
-                  cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] += m_shader_config->n_chiplet;
-                  if(cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] >= m_shader_config->n_simt_clusters){
-                    cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] = m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+        unsigned mem_chiplet = m_memory_sub_partition[i]->get_chiplet();
+        mf = chiplet_icnt->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+        if (mf != NULL){
+          if(m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet() != mem_chiplet && 
+          chiplet_icnt->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(),0)){
+            chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+            chiplet_icnt->push_request(mem_chiplet, m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet(), mf, 
+                              mf->get_is_write() ? mf->get_ctrl_size() : mf->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
+          
+          }else if (mf->get_sub_partition_id() == i){
+            if (!mf->get_is_write() && !mf->isatomic()){
+              traffic_information["chiplet_request_actual_bytes"] -= mf->get_ctrl_size();
+            }else{
+              traffic_information["chiplet_request_actual_bytes"] -= mf->size();
+            }
+            if (mf->get_access_type() != INST_ACC_R && !mf->get_is_write() &&
+              !mf->isatomic()) {
+                if (mf->get_type() == TO_SM && mf->get_pc()== m_config.get_remote_pc()){
+                  chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+                  unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()];
+                  unsigned finded = false;
+                  if(!finded){
+                    position_to_index_dynamic.push_back(cluster_executed);
+                    cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] += m_shader_config->n_chiplet;
+                    if(cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] >= m_shader_config->n_simt_clusters){
+                      cluster_dynamic_index[m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet()] = m_memory_sub_partition[mf->get_sub_partition_id()]->get_chiplet();
+                    }
+                  }
+                  m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf, m_config.get_remote_pc());
+                }else{
+                  if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+                    m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
+                    chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+                    push = true;
                   }
                 }
-                m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf, m_config.get_remote_pc());
-              }else{
-                if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
-                  m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
-                  chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-                  push = true;
-                }
+            }else{
+              if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+                m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
+                push = true;
+                chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
               }
-          }else{
-            if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
-              m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
-              push = true;
-              chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
             }
           }
         }
-      }
 
-      mem_fetch *mf2 = chiplet_icnt->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-      if (mf2 != NULL){
-        if(m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet() != mem_chiplet &&
-        chiplet_icnt->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),0)){
-          chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-          chiplet_icnt->push_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),
-           mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
-        
-        }else if (mf2->get_sub_partition_id() == i){
-          if (!mf2->get_is_write() && !mf2->isatomic()){
-            traffic_information["chiplet_request_actual_bytes"] -= mf2->get_ctrl_size();
-          }else{
-            traffic_information["chiplet_request_actual_bytes"] -= mf2->size();
-          }
-          if (mf2->get_access_type() != INST_ACC_R && !mf2->get_is_write() &&
-          !mf2->isatomic()) {
-              if (mf2->get_type() == TO_SM && mf2->get_pc()== m_config.get_remote_pc()){
-                chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-                unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()];
-                unsigned finded = false;
-                if(!finded){
-                  position_to_index_dynamic.push_back(cluster_executed);
-                  cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] += m_shader_config->n_chiplet;
-                  if(cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] >= m_shader_config->n_simt_clusters){
-                    cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] = m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet();
+        /*mem_fetch *mf2 = chiplet_icnt->top_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+        if (mf2 != NULL){
+          if(m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet() != mem_chiplet &&
+          chiplet_icnt->has_buffer_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),0)){
+            chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+            chiplet_icnt->push_request(mem_chiplet, m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet(),
+            mf2, mf2->get_is_write() ? mf2->get_ctrl_size() : mf2->size(),gpu_sim_cycle + gpu_tot_sim_cycle);
+          
+          }else if (mf2->get_sub_partition_id() == i){
+            if (!mf2->get_is_write() && !mf2->isatomic()){
+              traffic_information["chiplet_request_actual_bytes"] -= mf2->get_ctrl_size();
+            }else{
+              traffic_information["chiplet_request_actual_bytes"] -= mf2->size();
+            }
+            if (mf2->get_access_type() != INST_ACC_R && !mf2->get_is_write() &&
+            !mf2->isatomic()) {
+                if (mf2->get_type() == TO_SM && mf2->get_pc()== m_config.get_remote_pc()){
+                  chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+                  unsigned cluster_executed = cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()];
+                  unsigned finded = false;
+                  if(!finded){
+                    position_to_index_dynamic.push_back(cluster_executed);
+                    cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] += m_shader_config->n_chiplet;
+                    if(cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] >= m_shader_config->n_simt_clusters){
+                      cluster_dynamic_index[m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet()] = m_memory_sub_partition[mf2->get_sub_partition_id()]->get_chiplet();
+                    }
+                  }
+                  m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf2, m_config.get_remote_pc());
+                }else{
+                  if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+                    chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+                    m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
+                    push = true;
                   }
                 }
-                m_cluster[cluster_executed]->m_core[0]->add_dynamic_warp(mf2, m_config.get_remote_pc());
-              }else{
-                if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
-                  chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-                  m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
-                  push = true;
-                }
+            }else{
+              if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
+                chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
+                m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
+                push = true;
               }
-          }else{
-            if (!m_memory_sub_partition[i]->full(SECTOR_CHUNCK_SIZE) && !push){
-              chiplet_icnt->pop_request(mem_chiplet, gpu_sim_cycle + gpu_tot_sim_cycle);
-              m_memory_sub_partition[i]->push(mf2, gpu_sim_cycle + gpu_tot_sim_cycle);
-              push = true;
             }
           }
-        }
+        }*/
       }
       m_memory_sub_partition[i]->cache_cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
       if (m_config.g_power_simulation_enabled) {

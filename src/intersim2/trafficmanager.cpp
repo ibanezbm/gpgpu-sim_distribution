@@ -40,7 +40,7 @@
 #include "vc.hpp"
 #include "packet_reply_info.hpp"
 
-TrafficManager * TrafficManager::New(Configuration const & config,
+TrafficManager * TrafficManager::New(Configuration & config,
                                      vector<Network *> const & net,
                                      InterconnectInterface* icnt_interface,
                                      RoutingContext* rc)
@@ -60,9 +60,10 @@ TrafficManager * TrafficManager::New(Configuration const & config,
     return result;
 }
 
-TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface, RoutingContext* rc)
+TrafficManager::TrafficManager( Configuration &config, const vector<Network *> & net, InterconnectInterface* icnt_interface, RoutingContext* rc)
     : Module( 0, "traffic_manager" ), _net(net), _empty_network(false), _deadlock_timer(0), _reset_time(0), _drain_time(-1), _cur_id(0), _cur_pid(0), _time(0)
 {
+    config.tm = this;
     this->icnt_interface = icnt_interface;
     this->_rc = rc;
     _nodes = _net[0]->NumNodes( );
@@ -653,7 +654,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
     }
 
     if ( f->watch ) { 
-        *gWatchOut << GetSimTime() << " | "
+        *gWatchOut << getTime() << " | "
                    << "node" << dest << " | "
                    << "Retiring flit " << f->id 
                    << " (packet " << f->pid
@@ -691,7 +692,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
             assert(f->pid == head->pid);
         }
         if ( f->watch ) { 
-            *gWatchOut << GetSimTime() << " | "
+            *gWatchOut << getTime() << " | "
                        << "node" << dest << " | "
                        << "Retiring packet " << f->pid 
                        << " (plat = " << f->atime - head->ctime
@@ -845,7 +846,7 @@ void TrafficManager::_GeneratePacket( int source, int stype,
                       _subnet[packet_type]);
   
     if ( watch ) { 
-        *gWatchOut << GetSimTime() << " | "
+        *gWatchOut << getTime() << " | "
                    << "node" << source << " | "
                    << "Enqueuing packet " << pid
                    << " at time " << time
@@ -907,7 +908,7 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         f->vc  = -1;
 
         if ( f->watch ) { 
-            *gWatchOut << GetSimTime() << " | "
+            *gWatchOut << getTime() << " | "
                        << "node" << source << " | "
                        << "Enqueuing flit " << f->id
                        << " (packet " << f->pid
@@ -969,7 +970,7 @@ void TrafficManager::_Step( )
             Flit * const f = _net[subnet]->ReadFlit( n );
             if ( f ) {
                 if(f->watch) {
-                    *gWatchOut << GetSimTime() << " | "
+                    *gWatchOut << getTime() << " | "
                                << "node" << n << " | "
                                << "Ejecting flit " << f->id
                                << " (packet " << f->pid << ")"
@@ -1001,7 +1002,7 @@ void TrafficManager::_Step( )
                 c->Free();
             }
         }
-        _net[subnet]->ReadInputs( );
+        _net[subnet]->ReadInputs( false );
     }
   
     if ( !_empty_network ) {
@@ -1081,7 +1082,7 @@ void TrafficManager::_Step( )
                         cf->vc = -1;
 
                         if(cf->watch) {
-                            *gWatchOut << GetSimTime() << " | "
+                            *gWatchOut << getTime() << " | "
                                        << "node" << n << " | "
                                        << "Generating lookahead routing info for flit " << cf->id
                                        << " (NOQ)." << endl;
@@ -1097,7 +1098,7 @@ void TrafficManager::_Step( )
                         assert(vc_start <= vc_end);
                     }
                     if(cf->watch) {
-                        *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+                        *gWatchOut << getTime() << " | " << FullName() << " | "
                                    << "Finding output VC for flit " << cf->id
                                    << ":" << endl;
                     }
@@ -1110,18 +1111,18 @@ void TrafficManager::_Step( )
                         assert((vc >= vc_start) && (vc <= vc_end));
                         if(!dest_buf->IsAvailableFor(vc)) {
                             if(cf->watch) {
-                                *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+                                *gWatchOut << getTime() << " | " << FullName() << " | "
                                            << "  Output VC " << vc << " is busy." << endl;
                             }
                         } else {
                             if(dest_buf->IsFullFor(vc)) {
                                 if(cf->watch) {
-                                    *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+                                    *gWatchOut << getTime() << " | " << FullName() << " | "
                                                << "  Output VC " << vc << " is full." << endl;
                                 }
                             } else {
                                 if(cf->watch) {
-                                    *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+                                    *gWatchOut << getTime() << " | " << FullName() << " | "
                                                << "  Selected output VC " << vc << "." << endl;
                                 }
                                 cf->vc = vc;
@@ -1133,14 +1134,14 @@ void TrafficManager::_Step( )
 	
                 if(cf->vc == -1) {
                     if(cf->watch) {
-                        *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+                        *gWatchOut << getTime() << " | " << FullName() << " | "
                                    << "No output VC found for flit " << cf->id
                                    << "." << endl;
                     }
                 } else {
                     if(dest_buf->IsFullFor(cf->vc)) {
                         if(cf->watch) {
-                            *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+                            *gWatchOut << getTime() << " | " << FullName() << " | "
                                        << "Selected output VC " << cf->vc
                                        << " is full for flit " << cf->id
                                        << "." << endl;
@@ -1167,13 +1168,13 @@ void TrafficManager::_Step( )
                             int in_channel = inject->GetSinkPort();
                             _rf(_rc, router, f, in_channel, &f->la_route_set, false);
                             if(f->watch) {
-                                *gWatchOut << GetSimTime() << " | "
+                                *gWatchOut << getTime() << " | "
                                            << "node" << n << " | "
                                            << "Generating lookahead routing info for flit " << f->id
                                            << "." << endl;
                             }
                         } else if(f->watch) {
-                            *gWatchOut << GetSimTime() << " | "
+                            *gWatchOut << getTime() << " | "
                                        << "node" << n << " | "
                                        << "Already generated lookahead routing info for flit " << f->id
                                        << " (NOQ)." << endl;
@@ -1203,7 +1204,7 @@ void TrafficManager::_Step( )
                 }
 	
                 if(f->watch) {
-                    *gWatchOut << GetSimTime() << " | "
+                    *gWatchOut << getTime() << " | "
                                << "node" << n << " | "
                                << "Injecting flit " << f->id
                                << " into subnet " << subnet
@@ -1244,7 +1245,7 @@ void TrafficManager::_Step( )
 
                 f->atime = _time;
                 if(f->watch) {
-                    *gWatchOut << GetSimTime() << " | "
+                    *gWatchOut << getTime() << " | "
                                << "node" << n << " | "
                                << "Injecting credit for VC " << f->vc 
                                << " into subnet " << subnet 
@@ -2018,6 +2019,7 @@ void TrafficManager::DisplayStats(ostream & os) const {
             << "\tminimum = " << _flat_stats[c]->Min() << endl
             << "\tmaximum = " << _flat_stats[c]->Max() << endl
             << "Slowest flit = " << _slowest_flit[c] << endl
+            << "Energy flits = " << _flat_stats[c]->NumSamples() * _flit_size * 8 * 0.6 * 1e-12 << "J\n"
             << "Fragmentation average = " << _frag_stats[c]->Average() << endl
             << "\tminimum = " << _frag_stats[c]->Min() << endl
             << "\tmaximum = " << _frag_stats[c]->Max() << endl;
@@ -2155,6 +2157,7 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
            << " (" << _total_sims << " samples)" << endl;
         os << "\tnum_flits_total = " << _overall_num_flits[c]
            << " (" << _total_sims << " samples)" << endl;
+        os << "\tEnergy_flits_total = " << _overall_num_flits[c] * _flit_size * 8 * 0.6 * 1e-12 << "J\n";
 
         os << "Fragmentation average = " << _overall_avg_frag[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
@@ -2223,7 +2226,8 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
             std::cout << "  Flit latency avg = " << avg
                     << " min=" << _overall_subnet_flit_lat_min[s][0]
                     << " max=" << _overall_subnet_flit_lat_max[s][0]
-                    << " num_flits=" << n << "\n";
+                    << " num_flits=" << n << "\n"
+                    << " energy network = " << n * _flit_size * 8 * 0.6 * 1e-12 << "J\n";
         }
     }
 

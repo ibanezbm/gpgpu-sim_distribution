@@ -42,6 +42,7 @@
 #include "config_utils.hpp"
 #include "globals.hpp"
 
+class TrafficManager;
 typedef Channel<Credit> CreditChannel;
 
 
@@ -49,9 +50,21 @@ class Network : public TimedModule {
 protected:
 
   int _size;
-  int _nodes;
   int _channels;
   int _classes;
+
+  deque<TimedModule *> _timed_modules;
+
+  virtual void _ComputeSize( const Configuration &config ) = 0;
+  virtual void _BuildNet( const Configuration &config ) = 0;
+
+  void _Alloc( const Configuration &config );
+
+  RoutingContext* _rc;
+
+public:
+
+  int _nodes;
 
   vector<Router *> _routers;
 
@@ -64,16 +77,8 @@ protected:
   vector<FlitChannel *> _chan;
   vector<CreditChannel *> _chan_cred;
 
-  deque<TimedModule *> _timed_modules;
-
-  virtual void _ComputeSize( const Configuration &config ) = 0;
-  virtual void _BuildNet( const Configuration &config ) = 0;
-
-  void _Alloc( );
-
-  RoutingContext* _rc;
-
-public:
+  TrafficManager *_tm;
+  
   Network( const Configuration &config, const string & name, RoutingContext* rc );
   virtual ~Network( );
 
@@ -92,13 +97,14 @@ public:
 
   virtual double Capacity( ) const;
 
-  virtual void ReadInputs( );
+  virtual void ReadInputs( bool chiplet_network );
   virtual void Evaluate( );
   virtual void WriteOutputs( );
 
   void Display( ostream & os = cout ) const;
   void DumpChannelMap( ostream & os = cout, string const & prefix = "" ) const;
   void DumpNodeMap( ostream & os = cout, string const & prefix = "" ) const;
+  void Reset( );
 
   int NumChannels() const {return _channels;}
   const vector<FlitChannel *> & GetInject() {return _inject;}

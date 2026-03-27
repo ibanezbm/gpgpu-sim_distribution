@@ -57,7 +57,7 @@ CMesh::CMesh( const Configuration& config, const string & name, RoutingContext* 
   : Network(config, name, rc) 
 {
   _ComputeSize( config );
-  _Alloc();
+  _Alloc( config );
   _BuildNet(config);
 }
 

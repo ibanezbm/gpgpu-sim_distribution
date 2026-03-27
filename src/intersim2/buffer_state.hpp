@@ -36,6 +36,8 @@
 #include "credit.hpp"
 #include "config_utils.hpp"
 
+class TrafficManager;
+
 class BufferState : public Module {
   
   class BufferPolicy : public Module {
@@ -54,6 +56,7 @@ class BufferState : public Module {
 
     static BufferPolicy * New(Configuration const & config, 
 			      BufferState * parent, const string & name);
+    TrafficManager *_tm;
   };
   
   class PrivateBufferPolicy : public BufferPolicy {
@@ -234,6 +237,7 @@ public:
 #endif
 
   void Display( ostream & os = cout ) const;
+  TrafficManager *_tm;
 };
 
 #endif 

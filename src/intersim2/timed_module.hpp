@@ -36,7 +36,7 @@ public:
   TimedModule(Module * parent, string const & name) : Module(parent, name) {}
   virtual ~TimedModule() {}
   
-  virtual void ReadInputs() = 0;
+  virtual void ReadInputs(bool chiplet_network) = 0;
   virtual void Evaluate() = 0;
   virtual void WriteOutputs() = 0;
 };

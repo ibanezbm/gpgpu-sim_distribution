@@ -34,6 +34,7 @@
 #include "random_utils.hpp"
 #include "misc_utils.hpp"
 #include "globals.hpp"
+#include "trafficmanager.hpp"
 
 #define DRAGON_LATENCY
 
@@ -153,7 +154,7 @@ DragonFlyNew::DragonFlyNew( const Configuration &config, const string & name, Ro
 {
 
   _ComputeSize( config );
-  _Alloc( );
+  _Alloc( config );
   _BuildNet( config );
 }
 
@@ -457,7 +458,7 @@ void min_dragonflynew( const RoutingContext* rc, const Router *r, const Flit *f,
   
   out_vc = f->ph;
   if (debug)
-    *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+    *gWatchOut << r->_tm->getTime() << " | " << r->FullName() << " | "
 	       << "	through output port : " << out_port 
 	       << " out vc: " << out_vc << endl;
   outputs->AddRange( out_port, out_vc, out_vc );

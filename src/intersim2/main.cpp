@@ -81,9 +81,9 @@ Stats * GetStats(const std::string & name) {
     return test;
 }
 #else
-int GetSimTime() {
-  return g_icnt_interface[0]->GetIcntTime();
-}
+//int GetSimTime() {
+//  return g_icnt_interface[0]->GetIcntTime();
+//}
 
 class Stats;
 Stats * GetStats(const std::string & name) {
@@ -114,7 +114,7 @@ ostream * gWatchOut;
 
 /////////////////////////////////////////////////////////////////////////////
 
-bool Simulate( BookSimConfig const & config )
+bool Simulate( BookSimConfig & config )
 {
   vector<Network *> net;
   RoutingContext* rc = InitializeRoutingMap(config);

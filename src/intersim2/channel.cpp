@@ -34,8 +34,6 @@
 //   an integer number of simulator cycles.
 //
 /////
-#ifndef _CHANNEL_HPP
-#define _CHANNEL_HPP
 
 #include <queue>
 #include <cassert>
@@ -44,39 +42,61 @@
 #include "module.hpp"
 #include "timed_module.hpp"
 #include "config_utils.hpp"
+#include "channel.hpp"
+#include "flit.hpp"
+#include "credit.hpp"
+#include "trafficmanager.hpp"
 
-class TrafficManager;
+template class Channel<Flit>;
+template class Channel<Credit>;
 
 using namespace std;
 
 template<typename T>
-class Channel : public TimedModule {
-public:
-  Channel(const Configuration &config, Module * parent, string const & name);
-  virtual ~Channel() {}
+Channel<T>::Channel(const Configuration &config, Module * parent, string const & name)
+  : TimedModule(parent, name), _delay(1), _input(0), _output(0) {
+    _tm = config.tm;
+}
 
-  // Physical Parameters
-  void SetLatency(int cycles);
-  int GetLatency() const { return _delay ; }
-  
-  // Send data 
-  virtual void Send(T * data);
-  
-  // Receive data
-  virtual T * Receive(); 
-  
-  virtual void ReadInputs(bool chiplet_network);
-  virtual void Evaluate() {}
-  virtual void WriteOutputs();
+template<typename T>
+void Channel<T>::SetLatency(int cycles) {
+  if(cycles <= 0) {
+    Error("Channel must have positive delay.");
+  }
+  _delay = cycles ;
+}
 
-  TrafficManager *_tm;
-  
-protected:
-  int _delay;
-  T * _input;
-  T * _output;
-  queue<pair<int, T *> > _wait_queue;
+template<typename T>
+void Channel<T>::Send(T * data) {
+  _input = data;
+}
 
-};
+template<typename T>
+T * Channel<T>::Receive() {
+  return _output;
+}
 
-#endif
+template<typename T>
+void Channel<T>::ReadInputs(bool chiplet_network) {
+  if(_input) {
+    _wait_queue.push(make_pair(_tm->getTime() + _delay - 1, _input));
+    _input = 0;
+  }
+}
+
+template<typename T>
+void Channel<T>::WriteOutputs() {
+  _output = 0;
+  if(_wait_queue.empty()) {
+    return;
+  }
+  pair<int, T *> const & item = _wait_queue.front();
+  int const & time = item.first;
+  if(_tm->getTime() < time) {
+    return;
+  }
+  assert(_tm->getTime() == time);
+  _output = item.second;
+  assert(_output);
+  _wait_queue.pop();
+}

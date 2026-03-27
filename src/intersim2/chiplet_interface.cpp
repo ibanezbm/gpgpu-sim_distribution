@@ -289,6 +289,25 @@ void ChipletInterface::CreateInterconnect(unsigned n_nodes){
 
     assert(_icnt_config->GetStr("sim_type") == "gpgpusim");
     _traffic_manager = static_cast<GPUTrafficManager*>(TrafficManager::New( *_icnt_config, _net, this, rc)) ;
+    _traffic_manager->set_chiplet_network(true);
+    
+    for (int i = 0; i < _subnets; ++i) {
+      for (size_t j = 0; j < _net[i]->_eject.size(); j++) {
+        _net[i]->_eject[j]->_tm = _traffic_manager;
+        _net[i]->_eject_cred[j]->_tm = _traffic_manager;
+      }
+      for (size_t j = 0; j < _net[i]->_inject.size(); j++) {
+        _net[i]->_inject[j]->_tm = _traffic_manager;
+        _net[i]->_inject_cred[j]->_tm = _traffic_manager;
+      }
+      for (size_t j = 0; j < _net[i]->_chan.size(); j++) {
+         _net[i]->_chan[j]->_tm = _traffic_manager;
+         _net[i]->_chan_cred[j]->_tm = _traffic_manager;
+      }
+      for (size_t j = 0; j < _net[i]->_routers.size(); j++) {
+         _net[i]->_routers[j]->_tm = _traffic_manager;
+      }
+    }
 
     _flit_size = _icnt_config->GetInt( "flit_size" );
 

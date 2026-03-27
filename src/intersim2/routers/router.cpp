@@ -68,6 +68,7 @@ TimedModule( parent, name ), _id( id ), _inputs( inputs ), _outputs( outputs ),
   _output_speedup   = config.GetInt( "output_speedup" );
   _internal_speedup = config.GetFloat( "internal_speedup" );
   _classes          = config.GetInt( "classes" );
+  _tm = config.tm;
 
 #ifdef TRACK_FLOWS
   _received_flits.resize(_classes, vector<int>(_inputs, 0));

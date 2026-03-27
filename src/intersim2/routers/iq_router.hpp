@@ -158,7 +158,7 @@ public:
   
   virtual void AddOutputChannel(FlitChannel * channel, CreditChannel * backchannel);
 
-  virtual void ReadInputs( );
+  virtual void ReadInputs( bool chiplet_network );
   virtual void WriteOutputs( );
   
   void Display( ostream & os = cout ) const;

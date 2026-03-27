@@ -26,7 +26,6 @@ public:
     virtual void step(unsigned long cycle) = 0;
     virtual void print_stats() = 0;
     unsigned number_of_chiplets = 0;
-    double chiplet_frequency = 0.0;
     unsigned long long cycles = 0;
 };
 

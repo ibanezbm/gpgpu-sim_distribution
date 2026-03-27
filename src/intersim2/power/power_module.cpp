@@ -30,6 +30,7 @@
 #include "buffer_monitor.hpp"
 #include "switch_monitor.hpp"
 #include "iq_router.hpp"
+#include "trafficmanager.hpp"
 
 Power_Module::Power_Module(Network * n , const Configuration &config)
   : Module( 0, "power_module" ){
@@ -446,7 +447,7 @@ double Power_Module:: areaOutputModule(double Outputs) {
 }
 
 void Power_Module::run(){
-  totalTime = GetSimTime();
+  totalTime = net->_tm->getTime();
   channelWirePower=0;
   channelClkPower=0;
   channelDFFPower=0;

@@ -33,7 +33,8 @@
 // ----------------------------------------------------------------------
 
 #include "flitchannel.hpp"
-
+#include "config_utils.hpp"
+#include "trafficmanager.hpp"
 #include <iostream>
 #include <iomanip>
 
@@ -45,9 +46,9 @@
 //  $Date: 2007/06/27 23:10:17 $
 //  $Id: flitchannel.cpp 5516 2013-10-06 02:14:48Z dub $
 // ----------------------------------------------------------------------
-FlitChannel::FlitChannel(Module * parent, string const & name, int classes)
-: Channel<Flit>(parent, name), _routerSource(NULL), _routerSourcePort(-1), 
-  _routerSink(NULL), _routerSinkPort(-1), _idle(0) {
+FlitChannel::FlitChannel(Configuration const & config, Module * parent, string const & name, int classes)
+: Channel<Flit>(config, parent, name), _routerSource(NULL), _routerSourcePort(-1), 
+  _routerSink(NULL), _routerSinkPort(-1), _idle(0), _next_send_time(0){
   _active.resize(classes, 0);
 }
 
@@ -70,21 +71,35 @@ void FlitChannel::Send(Flit * f) {
   Channel<Flit>::Send(f);
 }
 
-void FlitChannel::ReadInputs() {
+void FlitChannel::Reset() {
+  _next_send_time = 0;
+}
+
+void FlitChannel::ReadInputs(bool chiplet_network) {
+  //printf("ReadInput %d: ", chiplet_network);
+  if(!_input) return;
+  int t = _tm->getTime() + _delay - 1;
+  if(chiplet_network) {
+    if(t < _next_send_time) {
+      t = _next_send_time;
+    }
+    _next_send_time = t + 2;   // 1 flit per 2 cycles
+  }
   Flit const * const & f = _input;
   if(f && f->watch) {
-    *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+    *gWatchOut << _tm->getTime() << " | " << FullName() << " | "
 	       << "Beginning channel traversal for flit " << f->id
 	       << " with delay " << _delay
 	       << "." << endl;
   }
-  Channel<Flit>::ReadInputs();
+  _wait_queue.push(make_pair(t, _input));
+  _input = 0;
 }
 
 void FlitChannel::WriteOutputs() {
   Channel<Flit>::WriteOutputs();
   if(_output && _output->watch) {
-    *gWatchOut << GetSimTime() << " | " << FullName() << " | "
+    *gWatchOut << _tm->getTime() << " | " << FullName() << " | "
 	       << "Completed channel traversal for flit " << _output->id
 	       << "." << endl;
   }
